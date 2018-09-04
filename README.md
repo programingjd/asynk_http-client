@@ -1,5 +1,5 @@
-![jcenter](https://img.shields.io/badge/_jcenter_-0.0.0.8-6688ff.png?style=flat) &#x2003; ![jcenter](https://img.shields.io/badge/_Tests_-87/87-green.png?style=flat)
-# Asynk MYSQL
+![jcenter](https://img.shields.io/badge/_jcenter_-0.0.0.9-6688ff.png?style=flat) &#x2003; ![jcenter](https://img.shields.io/badge/_Tests_-0/0-green.png?style=flat)
+# Asynk HTTP Client
 An HTTP async client with suspend functions for kotlin coroutines.
 
 ## Download ##
@@ -17,7 +17,7 @@ Include [those settings](https://bintray.com/repo/downloadMavenRepoSettingsFile/
 <dependency>
   <groupId>info.jdavid.asynk</groupId>
   <artifactId>http-client</artifactId>
-  <version>0.0.0.8</version>
+  <version>0.0.0.9</version>
 </dependency>
 ```
 __Gradle__
@@ -30,6 +30,6 @@ repositories {
 ```
 ```
 dependencies {
-  compile 'info.jdavid.asynk:http-client:0.0.0.8'
+  compile 'info.jdavid.asynk:http-client:0.0.0.9'
 }
 ```

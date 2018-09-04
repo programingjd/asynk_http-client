@@ -26,7 +26,7 @@ plugins {
 }
 
 group = "info.jdavid.asynk"
-version = "0.0.0.8.0"
+version = "0.0.0.9.0"
 
 repositories {
   jcenter()
@@ -35,9 +35,9 @@ repositories {
 
 dependencies {
   implementation(kotlin("stdlib-jdk8"))
-  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:0.25.0")
-  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-nio:0.25.0")
-  implementation("info.jdavid.asynk:http:0.0.0.8.1")
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:0.25.3")
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-nio:0.25.3")
+  implementation("info.jdavid.asynk:http:0.0.0.9")
   implementation("org.slf4j:slf4j-api:1.7.25")
   testImplementation("org.junit.jupiter:junit-jupiter-api:5.2.0")
   testImplementation("org.junit.jupiter:junit-jupiter-params:5.2.0")
@@ -96,7 +96,7 @@ publishing {
     }
   }
   publications {
-    register("mavenJava", MavenPublication::class) {
+    register("mavenJava", MavenPublication::class.java) {
       from(components["java"])
       artifact(sourcesJar)
       artifact(javadocJar)
