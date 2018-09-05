@@ -4,19 +4,98 @@ package info.jdavid.asynk.http.client
 
 import info.jdavid.asynk.http.Headers
 import info.jdavid.asynk.http.Method
+import java.lang.RuntimeException
+import java.nio.ByteBuffer
 
-class Request<T: Body> internal constructor(
-  val method: Method, val url: String, val headers: Headers, val body: T?
-)
+object Request {
+
+  open class Response(val status: Int, val headers: Headers, val body: ByteBuffer)
+
+  internal interface Requester {
+    suspend fun <T: Body>request(method: info.jdavid.asynk.http.Method, host: String, port: Int,
+                                 pathWithQueryAndFragment: String,
+                                 headers: Headers, body: T?, buffer: ByteBuffer): Request.Response
+  }
+
+  internal suspend fun <T: Body>request(method: Method, url: String, headers: Headers, body: T?,
+                                        buffer: ByteBuffer,
+                                        insecureRequester: Requester = InsecureRequest,
+                                        secureRequester: Requester = SecureRequest): Response {
+    buffer.clear()
+    if (url.length < 8) throw RuntimeException()
+    if (url[0] != 'h' || url[1] != 't' || url[2] != 't' || url[3] != 'p') throw RuntimeException()
+    return if (url[4] == 's') {
+      if (url[5] != ':' || url[6] != '/' || url[7] != '/') throw RuntimeException()
+      val pathEndIndex = url.indexOf('?', 8).let {
+        if (it != -1) it else url.indexOf('#', 8).let {
+          if (it != -1) it else url.length
+        }
+      }
+      val authorityEndIndex = url.indexOf('/', 8).let {
+        if (it == -1 || it > pathEndIndex) pathEndIndex else it
+      }
+      val portStartIndex = url.lastIndexOf(':', authorityEndIndex).let {
+        if (it < 8) authorityEndIndex else it
+      }
+      val port = if (portStartIndex == authorityEndIndex) {
+        443
+      } else {
+        url.substring(portStartIndex + 1, authorityEndIndex).toInt()
+      }
+      val host = url.substring(8, portStartIndex)
+      val pathWithQueryAndFragment = if (authorityEndIndex == url.length) {
+        "/"
+      } else if (authorityEndIndex == pathEndIndex) {
+        "/" + url.substring(pathEndIndex)
+      }
+      else {
+        url.substring(authorityEndIndex)
+      }
+      secureRequester.request(method, host, port, pathWithQueryAndFragment, headers, body, buffer)
+    }
+    else {
+      if (url[4] != ':' || url[5] != '/' || url[6] != '/') throw RuntimeException()
+      val pathEndIndex = url.indexOf('?', 7).let {
+        if (it != -1) it else url.indexOf('#', 7).let {
+          if (it != -1) it else url.length
+        }
+      }
+      val authorityEndIndex = url.indexOf('/', 7).let {
+        if (it == -1 || it > pathEndIndex) pathEndIndex else it
+      }
+      val portStartIndex = url.lastIndexOf(':', authorityEndIndex).let {
+        if (it < 7) authorityEndIndex else it
+      }
+      val port = if (portStartIndex == authorityEndIndex) {
+        80
+      } else {
+        url.substring(portStartIndex + 1, authorityEndIndex).toInt()
+      }
+      val host = url.substring(7, portStartIndex)
+      val pathWithQueryAndFragment = if (authorityEndIndex == url.length) {
+        "/"
+      } else if (authorityEndIndex == pathEndIndex) {
+        "/" + url.substring(pathEndIndex)
+      }
+      else {
+        url.substring(authorityEndIndex)
+      }
+      insecureRequester.request(method, host, port, pathWithQueryAndFragment, headers, body, buffer)
+    }
+  }
+
+  class InvalidUrlException: RuntimeException()
+
+}
 
 interface RequestDefinition<T: Body> {
-  fun build(): Request<T>
+  suspend fun send(buffer: ByteBuffer = ByteBuffer.allocateDirect(16384)): Request.Response
 }
 
 class RequestDefinitionWithBody<T: Body> internal constructor(
   private val method: Method, private val url: String, private val headers: Headers, private val body: T?
 ): RequestDefinition<T> {
-  override fun build() = Request(method, url, headers, body)
+  override suspend fun send(buffer: ByteBuffer) = Request.request(method, url, headers, body, buffer)
 }
 
 
@@ -81,11 +160,11 @@ class UrlDefinitionBodyAllowed internal constructor(
   override fun that() = this
   fun <T: Body>setBody(body: T) = RequestDefinitionWithBody(
     method, url, headers, body)
-  override fun build() = Request(method, url, headers, null)
+  override suspend fun send(buffer: ByteBuffer) = Request.request(method, url, headers, null, buffer)
 }
 class UrlDefinitionBodyForbidden internal constructor(
   method: Method, url: String
 ): UrlDefinition<UrlDefinitionBodyForbidden>(method, url), RequestDefinition<Nothing> {
   override fun that() = this
-  override fun build() = Request(method, url, headers, null)
+  override suspend fun send(buffer: ByteBuffer) = Request.request(method, url, headers, null, buffer)
 }
