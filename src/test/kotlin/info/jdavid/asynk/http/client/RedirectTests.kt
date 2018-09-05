@@ -18,4 +18,15 @@ class RedirectTests {
     }
   }
 
+  @Test
+  fun redirectRelative() {
+    val redirect = "/get"
+    runBlocking {
+      val response = Get.
+        url("http://httpbin.org/redirect-to?url=${URLEncoder.encode(redirect,"UTF-8")}").
+        send()
+      assertEquals(200, response.status)
+    }
+  }
+
 }
