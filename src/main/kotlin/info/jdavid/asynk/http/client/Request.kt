@@ -16,15 +16,68 @@ object Request {
   internal interface Requester {
     suspend fun <T: Body>request(method: info.jdavid.asynk.http.Method, host: String, port: Int,
                                  pathWithQueryAndFragment: String,
-                                 headers: Headers, body: T?, buffer: ByteBuffer): Request.Response
+                                 headers: Headers, body: T?,
+                                 buffer: ByteBuffer): Request.Response
   }
 
   internal suspend fun <T: Body>request(method: Method, url: String, headers: Headers, body: T?,
+                                        followRedirect: Boolean,
+                                        buffer: ByteBuffer,
+                                        insecureRequester: Requester = InsecureRequest,
+                                        secureRequester: Requester = SecureRequest): Response {
+    if (followRedirect) {
+      var location: String = url
+      while (true) {
+        val response =
+          request(method, location, headers, body, buffer, insecureRequester, secureRequester)
+        location = when(response.status) {
+          301, 302, 303, 307, 308 -> absolute(location, response.headers.value(Headers.LOCATION))
+          else -> null
+        } ?: return response
+      }
+    }
+    else {
+      return request(method, url, headers, body, buffer, insecureRequester, secureRequester)
+    }
+  }
+
+  private fun absolute(base: String?, redirect: String?): String? {
+    if (base == null || redirect == null) return null
+    if (redirect.startsWith("http://") || redirect.startsWith("https://")) return redirect
+    if (redirect.startsWith("//")) return base.substring(0, base.indexOf("/")) + redirect
+    val pathEndIndex = base.indexOf('?', 8).let {
+      if (it != -1) it else base.indexOf('#', 8).let {
+        if (it != -1) it else base.length
+      }
+    }
+    if (redirect.startsWith("/")) {
+      val authorityEndIndex = base.indexOf('/', 8).let {
+        if (it == -1 || it > pathEndIndex) pathEndIndex else it
+      }
+      return base.substring(0, authorityEndIndex) + redirect
+    }
+    val urlNoQueryOrSegment = base.substring(0, pathEndIndex)
+    if (urlNoQueryOrSegment.endsWith("/")) return urlNoQueryOrSegment + redirect
+    val authorityEndIndex = base.indexOf('/', 8).let {
+      if (it == -1 || it > pathEndIndex) pathEndIndex else it
+    }
+    val parent = urlNoQueryOrSegment.lastIndexOf("/").let {
+      if (it == -1 || it < authorityEndIndex) {
+        urlNoQueryOrSegment.substring(authorityEndIndex) + "/"
+      }
+      else {
+        urlNoQueryOrSegment.substring(0, it + 1)
+      }
+    }
+    return parent + redirect
+  }
+
+  internal suspend fun <T: Body>request(method: info.jdavid.asynk.http.Method, url: String, headers: Headers, body: T?,
                                         buffer: ByteBuffer,
                                         insecureRequester: Requester = InsecureRequest,
                                         secureRequester: Requester = SecureRequest): Response {
     buffer.clear()
-    if (url.length < 8) throw RuntimeException()
+    if (url.length < 10) throw RuntimeException()
     if (url[0] != 'h' || url[1] != 't' || url[2] != 't' || url[3] != 'p') throw RuntimeException()
     return if (url[4] == 's') {
       if (url[5] != ':' || url[6] != '/' || url[7] != '/') throw RuntimeException()
@@ -92,12 +145,17 @@ object Request {
 
 interface RequestDefinition<T: Body> {
   suspend fun send(buffer: ByteBuffer = ByteBuffer.allocateDirect(16384)): Request.Response
+  suspend fun send(followRedirect: Boolean,
+                   buffer: ByteBuffer = ByteBuffer.allocateDirect(16384)): Request.Response
 }
 
 class RequestDefinitionWithBody<T: Body> internal constructor(
   private val method: Method, private val url: String, private val headers: Headers, private val body: T?
 ): RequestDefinition<T> {
-  override suspend fun send(buffer: ByteBuffer) = Request.request(method, url, headers, body, buffer)
+  override suspend fun send(buffer: ByteBuffer) =
+    Request.request(method, url, headers, body, true, buffer)
+  override suspend fun send(followRedirect: Boolean, buffer: ByteBuffer) =
+    Request.request(method, url, headers, body, followRedirect, buffer)
 }
 
 
@@ -176,11 +234,17 @@ class UrlDefinitionBodyAllowed internal constructor(
   fun setBody(text: String, mediaType: String = MediaType.TEXT) =
     RequestDefinitionWithBody(method, url, headers, Body.from(text, mediaType))
   fun <T: Body>setBody(body: T) = RequestDefinitionWithBody(method, url, headers, body)
-  override suspend fun send(buffer: ByteBuffer) = Request.request(method, url, headers, null, buffer)
+  override suspend fun send(buffer: ByteBuffer) =
+    Request.request(method, url, headers, null, true, buffer)
+  override suspend fun send(followRedirect: Boolean, buffer: ByteBuffer) =
+    Request.request(method, url, headers, null, followRedirect, buffer)
 }
 class UrlDefinitionBodyForbidden internal constructor(
   method: Method, url: String
 ): UrlDefinition<UrlDefinitionBodyForbidden>(method, url), RequestDefinition<Nothing> {
   override fun that() = this
-  override suspend fun send(buffer: ByteBuffer) = Request.request(method, url, headers, null, buffer)
+  override suspend fun send(buffer: ByteBuffer) =
+    Request.request(method, url, headers, null, true, buffer)
+  override suspend fun send(followRedirect: Boolean, buffer: ByteBuffer) =
+    Request.request(method, url, headers, null, followRedirect, buffer)
 }
