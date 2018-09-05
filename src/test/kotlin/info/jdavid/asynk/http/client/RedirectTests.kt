@@ -29,4 +29,25 @@ class RedirectTests {
     }
   }
 
+  @Test
+  fun multipleRedirectAbsolute() {
+    runBlocking {
+      val response = Get.
+        url("http://httpbin.org/absolute-redirect/3").
+        send()
+      assertEquals(200, response.status)
+    }
+  }
+
+  @Test
+  fun multipleRedirectRelative() {
+    runBlocking {
+      val response = Get.
+        url("http://httpbin.org/relative-redirect/3").
+        send()
+      assertEquals(200, response.status)
+    }
+  }
+
+
 }
