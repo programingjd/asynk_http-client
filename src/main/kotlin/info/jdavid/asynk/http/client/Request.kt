@@ -1,6 +1,6 @@
 @file:Suppress("unused")
 
-package info.jdavid.asynk
+package info.jdavid.asynk.http.client
 
 import info.jdavid.asynk.http.Headers
 import info.jdavid.asynk.http.Method
@@ -72,13 +72,15 @@ class UrlDefinitionBodyRequired internal constructor(
   method: Method, url: String
 ): UrlDefinition<UrlDefinitionBodyRequired>(method, url) {
   override fun that() = this
-  fun <T: Body>setBody(body: T) = RequestDefinitionWithBody(method, url, headers, body)
+  fun <T: Body>setBody(body: T) = RequestDefinitionWithBody(
+    method, url, headers, body)
 }
 class UrlDefinitionBodyAllowed internal constructor(
   method: Method, url: String
 ): UrlDefinition<UrlDefinitionBodyAllowed>(method, url), RequestDefinition<Nothing> {
   override fun that() = this
-  fun <T: Body>setBody(body: T) = RequestDefinitionWithBody(method, url, headers, body)
+  fun <T: Body>setBody(body: T) = RequestDefinitionWithBody(
+    method, url, headers, body)
   override fun build() = Request(method, url, headers, null)
 }
 class UrlDefinitionBodyForbidden internal constructor(

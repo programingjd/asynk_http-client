@@ -1,4 +1,4 @@
-package info.jdavid.asynk
+package info.jdavid.asynk.http.client
 
 import info.jdavid.asynk.http.MediaType
 import kotlinx.coroutines.experimental.nio.aRead
@@ -52,10 +52,13 @@ interface Body {
   }
 
   companion object {
-    fun from(file: File) = from(file, MediaType.fromFile(file) ?: MediaType.OCTET_STREAM)
+    fun from(file: File) = from(file, MediaType.fromFile(file)
+                                                                                   ?: MediaType.OCTET_STREAM)
     fun from(file: File, mediaType: String) = FileBody(file, mediaType)
-    fun from(text: String, mediaType: String = MediaType.TEXT) = StringBody(text, mediaType)
-    fun from(bytes: ByteArray, mediaType: String = MediaType.OCTET_STREAM) = ByteBody(bytes, mediaType)
+    fun from(text: String, mediaType: String = MediaType.TEXT) = StringBody(
+      text, mediaType)
+    fun from(bytes: ByteArray, mediaType: String = MediaType.OCTET_STREAM) = ByteBody(
+      bytes, mediaType)
   }
 
 }
