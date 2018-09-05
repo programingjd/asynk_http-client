@@ -8,23 +8,34 @@ import java.util.concurrent.TimeUnit
 
 internal object Http {
 
-  fun status(buffer: ByteBuffer): Int {
+  fun http10(buffer: ByteBuffer): Boolean {
     // Status line: (ASCII)
     // HTTP/1.1 CODE MESSAGE\r\n
 
     // Shortest possible status line is 15 bytes long
     if (buffer.remaining() < 15) throw InvalidStatusLine()
 
-    // It should start with HTTP/1.1 + space
+    // It should start with HTTP/1.
     if (buffer.get() != H_UPPER ||
         buffer.get() != T_UPPER ||
         buffer.get() != T_UPPER ||
         buffer.get() != P_UPPER ||
         buffer.get() != SLASH ||
         buffer.get() != ONE ||
-        buffer.get() != DOT ||
-        buffer.get() != ONE ||
-        buffer.get() != SPACE) throw InvalidStatusLine()
+        buffer.get() != DOT) throw InvalidStatusLine()
+    return when (buffer.get()) {
+      ONE -> false
+      ZERO -> true
+      else -> throw InvalidStatusLine()
+    }
+  }
+
+  fun status(buffer: ByteBuffer): Int {
+    // Status line: (ASCII)
+    // HTTP/1.1 CODE MESSAGE\r\n
+    // We've already read up to the HTTP version (HTTP/1.0 or HTTP/1.1)
+
+    if (buffer.get() != SPACE) throw InvalidStatusLine()
 
     val codeBytes = ByteArray(3)
     buffer.get(codeBytes)
@@ -91,13 +102,15 @@ internal object Http {
 
   suspend fun body(socket: AsynchronousSocketChannel,
                    alreadyExhausted: Boolean,
+                   http10: Boolean,
                    buffer: ByteBuffer,
                    headers: Headers) {
     var exhausted = alreadyExhausted
     buffer.compact().flip()
     val encoding = headers.value(Headers.TRANSFER_ENCODING)
     if (encoding == null || encoding == IDENTITY) {
-      val contentLength = headers.value(Headers.CONTENT_LENGTH)?.toInt() ?: 0
+      val contentLength =
+        headers.value(Headers.CONTENT_LENGTH)?.toInt() ?: if (http10) buffer.limit() else 0
       if (buffer.limit() > contentLength) throw InvalidResponse()
       if (contentLength > 0) {
         val compression = headers.value(Headers.CONTENT_ENCODING)
@@ -202,6 +215,7 @@ internal object Http {
   private const val SLASH: Byte = 0x2f
   private const val ONE: Byte = 0x31
   private const val DOT: Byte = 0x2e
+  private const val ZERO: Byte = 0x30
 
   private const val IDENTITY = "identity"
   private const val CHUNKED = "chunked"

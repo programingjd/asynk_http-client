@@ -21,11 +21,11 @@ internal object InsecureRequest: Request.Requester {
       headers.set(Headers.CONTENT_LENGTH, "${body.byteLength()}")
     }
     headers.set(Headers.HOST, if (port == 80) host else "${host}:${port}")
-    headers.set(Headers.CONNECTION, "close")
-    headers.set(Headers.USER_AGENT, "asynk")
+    //headers.set(Headers.CONNECTION, "close")
+    headers.set(Headers.USER_AGENT, "curl/7.61.0")
     headers.set(Headers.ACCEPT, "*/*")
-    headers.set(Headers.ACCEPT_CHARSET, "utf-8, *;q=0.1")
-    headers.set(Headers.ACCEPT_ENCODING, "identity")
+    //headers.set(Headers.ACCEPT_CHARSET, "utf-8, *;q=0.1")
+    //headers.set(Headers.ACCEPT_ENCODING, "identity")
     val socket = AsynchronousSocketChannel.open()
     socket.aConnect(InetSocketAddress(host, port))
 
@@ -36,6 +36,8 @@ internal object InsecureRequest: Request.Requester {
       buffer.put(CRLF)
     }
     buffer.put(CRLF)
+    debug(buffer)
+    buffer.flip()
     while (buffer.remaining() > 0) socket.aWrite(buffer)
     body?.writeTo(socket, buffer)
 
@@ -43,11 +45,22 @@ internal object InsecureRequest: Request.Requester {
 
     val exhausted = buffer.remaining() > socket.aRead(buffer, 20000L, TimeUnit.MILLISECONDS)
     buffer.flip()
+    val http10 = Http.http10(buffer)
     val status = Http.status(buffer)
     val responseHeaders = Headers()
-    Http.body(socket, Http.headers(socket, exhausted, buffer, responseHeaders), buffer, responseHeaders)
+    Http.body(
+      socket, Http.headers(socket, exhausted, buffer, responseHeaders), http10, buffer, responseHeaders
+    )
 
     return Request.Response(status, responseHeaders, buffer)
+  }
+
+  private fun debug(buffer: ByteBuffer) {
+    buffer.flip()
+    val bytes = ByteArray(buffer.remaining())
+    buffer.get(bytes)
+    buffer.limit(buffer.capacity())
+    println(String(bytes))
   }
 
   val CRLF = "\r\n".toByteArray()

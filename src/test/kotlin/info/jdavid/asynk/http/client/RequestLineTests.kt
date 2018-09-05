@@ -269,7 +269,7 @@ class RequestLineTests {
   @Test
   fun test() {
     runBlocking {
-      val response = Get.url("http://mockbin.org:80/bin/31f9cd6e-4114-466e-97d8-26cf3015f669").send()
+      val response = Get.url("http://www.w3.org/Protocols/rfc2616/rfc2616-sec20.html").send()
       println(response.status)
       response.headers.lines.forEach { println(it) }
       println(response.body.remaining())
