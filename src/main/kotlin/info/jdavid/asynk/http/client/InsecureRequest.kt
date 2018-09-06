@@ -48,8 +48,9 @@ internal object InsecureRequest: Request.Requester {
       val http10 = Http.http10(buffer)
       val status = Http.status(buffer)
       val responseHeaders = Headers()
+      Http.headers(socket, exhausted, buffer, responseHeaders)
       Http.body(
-        socket, Http.headers(socket, exhausted, buffer, responseHeaders), http10, buffer, responseHeaders
+        socket, false, http10, buffer, responseHeaders
       )
       Request.Response(status, responseHeaders, buffer)
     }
