@@ -12,7 +12,7 @@ class BodyTests {
   @Test
   fun testRequestStringBody() {
     runBlocking {
-      val response = Post.url("http://httpbin.org/post").setBody("abc").send()
+      val response = Post.url("http://httpbin.org/post").body("abc").send()
       assertEquals(200, response.status)
       assertEquals(MediaType.JSON, response.headers.value(Headers.CONTENT_TYPE))
       assertEquals("close", response.headers.value(Headers.CONNECTION))
@@ -34,7 +34,7 @@ class BodyTests {
     val json = mapOf("a" to "b", "c" to true)
     val data = ObjectMapper().writeValueAsBytes(json)
     runBlocking {
-      val response = Post.url("http://httpbin.org/post").setBody(data, MediaType.JSON).send()
+      val response = Post.url("http://httpbin.org/post").body(data, MediaType.JSON).send()
       assertEquals(200, response.status)
       assertEquals(MediaType.JSON, response.headers.value(Headers.CONTENT_TYPE))
       assertEquals("close", response.headers.value(Headers.CONNECTION))

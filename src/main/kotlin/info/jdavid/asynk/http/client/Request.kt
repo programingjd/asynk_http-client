@@ -163,21 +163,25 @@ abstract class HeadersDefinition<T: HeadersDefinition<T>> internal constructor(
   internal val headers: Headers = Headers()
 ) {
   internal abstract fun that(): T
-  fun setHeaders(headers: Headers): T {
+  fun headers(headers: Headers): T {
     this.headers.lines.clear()
     this.headers.lines.addAll(headers.lines)
     return that()
   }
-  fun addHeader(name: String, value: String): T {
-    headers.add(name, value)
+  fun header(name: String, values: Array<String>): T {
+    values.forEach { headers.add(name, it) }
     return that()
   }
-  fun setHeader(name: String, value: String): T {
+  fun header(name: String, values: Iterable<String>): T {
+    values.forEach { headers.add(name, it) }
+    return that()
+  }
+  fun header(name: String, value: String): T {
     headers.set(name, value)
     return that()
   }
   fun headerKeys() = headers.keys()
-  fun headerHas(name: String) = headers.has(name)
+  fun hasHeader(name: String) = headers.has(name)
   fun headerValue(name: String) = headers.value(name)
   fun headerValues(name: String) = headers.values(name)
 }
@@ -211,29 +215,29 @@ class UrlDefinitionBodyRequired internal constructor(
   method: Method, url: String
 ): UrlDefinition<UrlDefinitionBodyRequired>(method, url) {
   override fun that() = this
-  fun setBody(file: File) =
+  fun body(file: File) =
     RequestDefinitionWithBody(method, url, headers, Body.from(file))
-  fun setBody(file: File, mediaType: String) =
+  fun body(file: File, mediaType: String) =
     RequestDefinitionWithBody(method, url, headers, Body.from(file, mediaType))
-  fun setBody(bytes: ByteArray, mediaType: String = MediaType.OCTET_STREAM) =
+  fun body(bytes: ByteArray, mediaType: String = MediaType.OCTET_STREAM) =
     RequestDefinitionWithBody(method, url, headers, Body.from(bytes, mediaType))
-  fun setBody(text: String, mediaType: String = MediaType.TEXT) =
+  fun body(text: String, mediaType: String = MediaType.TEXT) =
     RequestDefinitionWithBody(method, url, headers, Body.from(text, mediaType))
-  fun <T: Body>setBody(body: T) = RequestDefinitionWithBody(method, url, headers, body)
+  fun <T: Body>body(body: T) = RequestDefinitionWithBody(method, url, headers, body)
 }
 class UrlDefinitionBodyAllowed internal constructor(
   method: Method, url: String
 ): UrlDefinition<UrlDefinitionBodyAllowed>(method, url), RequestDefinition<Nothing> {
   override fun that() = this
-  fun setBody(file: File) =
+  fun body(file: File) =
     RequestDefinitionWithBody(method, url, headers, Body.from(file))
-  fun setBody(file: File, mediaType: String) =
+  fun body(file: File, mediaType: String) =
     RequestDefinitionWithBody(method, url, headers, Body.from(file, mediaType))
-  fun setBody(bytes: ByteArray, mediaType: String = MediaType.OCTET_STREAM) =
+  fun body(bytes: ByteArray, mediaType: String = MediaType.OCTET_STREAM) =
     RequestDefinitionWithBody(method, url, headers, Body.from(bytes, mediaType))
-  fun setBody(text: String, mediaType: String = MediaType.TEXT) =
+  fun body(text: String, mediaType: String = MediaType.TEXT) =
     RequestDefinitionWithBody(method, url, headers, Body.from(text, mediaType))
-  fun <T: Body>setBody(body: T) = RequestDefinitionWithBody(method, url, headers, body)
+  fun <T: Body>body(body: T) = RequestDefinitionWithBody(method, url, headers, body)
   override suspend fun send(buffer: ByteBuffer) =
     Request.request(method, url, headers, null, true, buffer)
   override suspend fun send(followRedirect: Boolean, buffer: ByteBuffer) =

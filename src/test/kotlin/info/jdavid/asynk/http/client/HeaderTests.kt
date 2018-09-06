@@ -13,12 +13,12 @@ class HeaderTests {
   fun testRequestHeaders() {
     runBlocking {
       val response = Get.url("http://httpbin.org/headers").
-        setHeader("Test1", "abc").
-        addHeader("Test1", "de").
-        addHeader("Test2", "fgh").
-        setHeader("Test2", "ijk").
-        setHeader("Test3", "lmn").
-        addHeader("Test4", "opq").
+        header("Test1", arrayOf("abc")).
+        header("Test1", arrayOf("de")).
+        header("Test2", arrayOf("fgh")).
+        header("Test2", "ijk").
+        header("Test3", "lmn").
+        header("Test4", arrayOf("opq")).
         send()
       assertEquals(200, response.status)
       assertEquals(MediaType.JSON, response.headers.value(Headers.CONTENT_TYPE))

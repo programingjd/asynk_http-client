@@ -22,9 +22,9 @@ internal object InsecureRequest: Request.Requester {
     }
     headers.set(Headers.HOST, if (port == 80) host else "${host}:${port}")
     headers.set(Headers.CONNECTION, "close")
-    headers.set(Headers.USER_AGENT, "asynk/0.0.0.10")
-    headers.set(Headers.ACCEPT, "*/*")
-    headers.set(Headers.ACCEPT_CHARSET, "utf-8, *;q=0.1")
+    if (!headers.has(Headers.USER_AGENT)) headers.set(Headers.USER_AGENT, "asynk/0.0.0.10")
+    if (!headers.has(Headers.ACCEPT)) headers.set(Headers.ACCEPT, "*/*")
+    if (!headers.has(Headers.ACCEPT_CHARSET)) headers.set(Headers.ACCEPT_CHARSET, "utf-8, *;q=0.1")
     headers.set(Headers.ACCEPT_ENCODING, "identity")
     return AsynchronousSocketChannel.open().use { socket ->
       socket.aConnect(InetSocketAddress(host, port))
