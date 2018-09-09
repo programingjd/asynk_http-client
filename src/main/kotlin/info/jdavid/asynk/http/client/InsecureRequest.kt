@@ -2,6 +2,7 @@ package info.jdavid.asynk.http.client
 
 import info.jdavid.asynk.http.Headers
 import info.jdavid.asynk.http.Method
+import info.jdavid.asynk.http.internal.Http
 import kotlinx.coroutines.experimental.nio.aConnect
 import kotlinx.coroutines.experimental.nio.aRead
 import kotlinx.coroutines.experimental.nio.aWrite
@@ -22,7 +23,7 @@ internal object InsecureRequest: Request.Requester {
     }
     headers.set(Headers.HOST, if (port == 80) host else "${host}:${port}")
     headers.set(Headers.CONNECTION, "close")
-    if (!headers.has(Headers.USER_AGENT)) headers.set(Headers.USER_AGENT, "asynk/0.0.0.10")
+    if (!headers.has(Headers.USER_AGENT)) headers.set(Headers.USER_AGENT, "asynk/0.0.0.12")
     if (!headers.has(Headers.ACCEPT)) headers.set(Headers.ACCEPT, "*/*")
     if (!headers.has(Headers.ACCEPT_CHARSET)) headers.set(Headers.ACCEPT_CHARSET, "utf-8, *;q=0.1")
     headers.set(Headers.ACCEPT_ENCODING, "identity")
@@ -42,16 +43,18 @@ internal object InsecureRequest: Request.Requester {
       body?.writeTo(socket, buffer)
 
       buffer.clear()
-
-      val exhausted = buffer.remaining() > socket.aRead(buffer, 20000L, TimeUnit.MILLISECONDS)
+      if (socket.aRead(buffer, 20000L, TimeUnit.MILLISECONDS) < 16) throw IncompleteResponseException()
       buffer.flip()
-      val http10 = Http.http10(buffer)
+      val httpVersion = Http.httpVersion(buffer)
       val status = Http.status(buffer)
+      if (buffer.remaining() < 4) {
+        buffer.compact()
+        if (socket.aRead(buffer, 20000L, TimeUnit.MILLISECONDS) < 4) throw IncompleteResponseException()
+        buffer.flip()
+      }
       val responseHeaders = Headers()
-      Http.headers(socket, exhausted, buffer, responseHeaders)
-      Http.body(
-        socket, false, http10, buffer, responseHeaders
-      )
+      Http.headers(socket, buffer, responseHeaders)
+      Http.body(socket, httpVersion, buffer, true, false, responseHeaders, null)
       Request.Response(status, responseHeaders, buffer)
     }
   }
@@ -64,6 +67,8 @@ internal object InsecureRequest: Request.Requester {
     println(String(bytes))
   }
 
-  val CRLF = "\r\n".toByteArray()
+  private val CRLF = "\r\n".toByteArray()
+
+  class IncompleteResponseException: Exception()
 
 }

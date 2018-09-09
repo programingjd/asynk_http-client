@@ -41,7 +41,7 @@ class HeaderTests {
       assertEquals("*/*", headers[Headers.ACCEPT])
       assertEquals("close", headers[Headers.CONNECTION])
       assertEquals("httpbin.org", headers[Headers.HOST])
-      assertEquals("asynk/0.0.0.10", headers[Headers.USER_AGENT])
+      assertEquals("asynk/0.0.0.12", headers[Headers.USER_AGENT])
       assertEquals("abc,de", headers["Test1"])
       assertEquals("ijk", headers["Test2"])
       assertEquals("lmn", headers["Test3"])
@@ -68,7 +68,7 @@ class HeaderTests {
       assertEquals(1, map.size)
       val entry = map.entries.first()
       assertEquals("user-agent", entry.key)
-      assertEquals("asynk/0.0.0.10", entry.value)
+      assertEquals("asynk/0.0.0.12", entry.value)
     }
   }
 
