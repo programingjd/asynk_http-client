@@ -21,19 +21,19 @@ class RequestLineTests {
   object TestSecureRequester: Request.Requester {
     override suspend fun <T: Body> request(method: Method, host: String, port: Int,
                                            pathWithQueryAndFragment: String, headers: Headers,
-                                           body: T?, buffer: ByteBuffer) =
+                                           body: T?, buffer: ByteBuffer, timeoutMillis: Long) =
       TestResponse(host, port, pathWithQueryAndFragment, true)
   }
 
   object TestInsecureRequester: Request.Requester {
     override suspend fun <T: Body> request(method: Method, host: String, port: Int,
                                            pathWithQueryAndFragment: String, headers: Headers,
-                                           body: T?, buffer: ByteBuffer) =
+                                           body: T?, buffer: ByteBuffer, timeoutMillis: Long) =
       TestResponse(host, port, pathWithQueryAndFragment, false)
   }
 
   suspend fun request(url: String) = Request.request(
-    Method.GET, url, Headers(), null, emptyBuffer, TestInsecureRequester, TestSecureRequester
+    Method.GET, url, Headers(), null, emptyBuffer, 10000L, TestInsecureRequester, TestSecureRequester
   ) as TestResponse
 
   @Test

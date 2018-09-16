@@ -16,7 +16,8 @@ internal object InsecureRequest: Request.Requester {
   override suspend fun <T: Body>request(method: Method, host: String, port: Int,
                                         pathWithQueryAndFragment: String,
                                         headers: Headers, body: T?,
-                                        buffer: ByteBuffer): Request.Response {
+                                        buffer: ByteBuffer,
+                                        timeoutMillis: Long): Request.Response {
     if (body != null) {
       headers.set(Headers.CONTENT_TYPE, body.contentType())
       headers.set(Headers.CONTENT_LENGTH, "${body.byteLength()}")
