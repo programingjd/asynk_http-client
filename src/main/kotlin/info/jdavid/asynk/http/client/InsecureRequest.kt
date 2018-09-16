@@ -22,7 +22,7 @@ internal object InsecureRequest: Request.Requester {
       headers.set(Headers.CONTENT_LENGTH, "${body.byteLength()}")
     }
     headers.set(Headers.HOST, if (port == 80) host else "${host}:${port}")
-    headers.set(Headers.CONNECTION, "close")
+    if (!headers.has(Headers.CONNECTION)) headers.set(Headers.CONNECTION, "close")
     if (!headers.has(Headers.USER_AGENT)) headers.set(Headers.USER_AGENT, "asynk/0.0.0.12")
     if (!headers.has(Headers.ACCEPT)) headers.set(Headers.ACCEPT, "*/*")
     if (!headers.has(Headers.ACCEPT_CHARSET)) headers.set(Headers.ACCEPT_CHARSET, "utf-8, *;q=0.1")
