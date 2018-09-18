@@ -16,8 +16,8 @@ internal object InsecureRequest: Request.Requester {
   override suspend fun <T: Body>request(method: Method, host: String, port: Int,
                                         pathWithQueryAndFragment: String,
                                         headers: Headers, body: T?,
-                                        buffer: ByteBuffer,
-                                        timeoutMillis: Long): Request.Response {
+                                        timeoutMillis: Long,
+                                        buffer: ByteBuffer): Request.Response {
     if (body != null) {
       headers.set(Headers.CONTENT_TYPE, body.contentType())
       headers.set(Headers.CONTENT_LENGTH, "${body.byteLength()}")
@@ -38,7 +38,7 @@ internal object InsecureRequest: Request.Requester {
         buffer.put(CRLF)
       }
       buffer.put(CRLF)
-      debug(buffer)
+      //debug(buffer)
       buffer.flip()
       while (buffer.remaining() > 0) socket.aWrite(buffer)
       body?.writeTo(socket, buffer)
@@ -60,13 +60,13 @@ internal object InsecureRequest: Request.Requester {
     }
   }
 
-  private fun debug(buffer: ByteBuffer) {
-    buffer.flip()
-    val bytes = ByteArray(buffer.remaining())
-    buffer.get(bytes)
-    buffer.limit(buffer.capacity())
-    println(String(bytes))
-  }
+//  private fun debug(buffer: ByteBuffer) {
+//    buffer.flip()
+//    val bytes = ByteArray(buffer.remaining())
+//    buffer.get(bytes)
+//    buffer.limit(buffer.capacity())
+//    println(String(bytes))
+//  }
 
   private val CRLF = "\r\n".toByteArray()
 

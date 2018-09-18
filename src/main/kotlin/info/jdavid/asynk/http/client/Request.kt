@@ -17,21 +17,21 @@ object Request {
     suspend fun <T: Body>request(method: info.jdavid.asynk.http.Method, host: String, port: Int,
                                  pathWithQueryAndFragment: String,
                                  headers: Headers, body: T?,
-                                 buffer: ByteBuffer,
-                                 timeoutMillis: Long): Request.Response
+                                 timeoutMillis: Long,
+                                 buffer: ByteBuffer): Request.Response
   }
 
   internal suspend fun <T: Body>request(method: Method, url: String, headers: Headers, body: T?,
                                         followRedirect: Boolean,
-                                        buffer: ByteBuffer,
                                         timeoutMillis: Long,
+                                        buffer: ByteBuffer,
                                         insecureRequester: Requester = InsecureRequest,
                                         secureRequester: Requester = SecureRequest): Response {
     if (followRedirect) {
       var location: String = url
       while (true) {
         val response =
-          request(method, location, headers, body, buffer, timeoutMillis, insecureRequester, secureRequester)
+          request(method, location, headers, body, timeoutMillis, buffer, insecureRequester, secureRequester)
         location = when(response.status) {
           301, 302, 303, 307, 308 -> absolute(location, response.headers.value(Headers.LOCATION))
           else -> null
@@ -39,7 +39,7 @@ object Request {
       }
     }
     else {
-      return request(method, url, headers, body, buffer, timeoutMillis, insecureRequester, secureRequester)
+      return request(method, url, headers, body, timeoutMillis, buffer, insecureRequester, secureRequester)
     }
   }
 
@@ -75,8 +75,8 @@ object Request {
   }
 
   internal suspend fun <T: Body>request(method: info.jdavid.asynk.http.Method, url: String, headers: Headers, body: T?,
-                                        buffer: ByteBuffer,
                                         timeoutMillis: Long,
+                                        buffer: ByteBuffer,
                                         insecureRequester: Requester = InsecureRequest,
                                         secureRequester: Requester = SecureRequest): Response {
     buffer.clear()
@@ -110,7 +110,7 @@ object Request {
         url.substring(authorityEndIndex)
       }
       secureRequester.request(
-        method, host, port, pathWithQueryAndFragment, headers, body, buffer, timeoutMillis
+        method, host, port, pathWithQueryAndFragment, headers, body, timeoutMillis, buffer
       )
     }
     else {
@@ -141,7 +141,7 @@ object Request {
         url.substring(authorityEndIndex)
       }
       insecureRequester.request(
-        method, host, port, pathWithQueryAndFragment, headers, body, buffer, timeoutMillis
+        method, host, port, pathWithQueryAndFragment, headers, body, timeoutMillis, buffer
       )
     }
   }
@@ -151,20 +151,20 @@ object Request {
 }
 
 interface RequestDefinition<T: Body> {
-  suspend fun send(buffer: ByteBuffer = ByteBuffer.allocateDirect(16384),
-                   timeoutMillis: Long = 10000L): Request.Response
+  suspend fun send(timeoutMillis: Long = 10000L,
+                   buffer: ByteBuffer = ByteBuffer.allocateDirect(16384)): Request.Response
   suspend fun send(followRedirect: Boolean,
-                   buffer: ByteBuffer = ByteBuffer.allocateDirect(16384),
-                   timeoutMillis: Long = 10000L): Request.Response
+                   timeoutMillis: Long = 10000L,
+                   buffer: ByteBuffer = ByteBuffer.allocateDirect(16384)): Request.Response
 }
 
 class RequestDefinitionWithBody<T: Body> internal constructor(
   private val method: Method, private val url: String, private val headers: Headers, private val body: T?
 ): RequestDefinition<T> {
-  override suspend fun send(buffer: ByteBuffer, timeoutMillis: Long) =
-    Request.request(method, url, headers, body, true, buffer, timeoutMillis)
-  override suspend fun send(followRedirect: Boolean, buffer: ByteBuffer, timeoutMillis: Long) =
-    Request.request(method, url, headers, body, followRedirect, buffer, timeoutMillis)
+  override suspend fun send(timeoutMillis: Long, buffer: ByteBuffer) =
+    Request.request(method, url, headers, body, true, timeoutMillis, buffer)
+  override suspend fun send(followRedirect: Boolean, timeoutMillis: Long, buffer: ByteBuffer) =
+    Request.request(method, url, headers, body, followRedirect, timeoutMillis, buffer)
 }
 
 
@@ -247,17 +247,17 @@ class UrlDefinitionBodyAllowed internal constructor(
   fun body(text: String, mediaType: String = MediaType.TEXT) =
     RequestDefinitionWithBody(method, url, headers, Body.from(text, mediaType))
   fun <T: Body>body(body: T) = RequestDefinitionWithBody(method, url, headers, body)
-  override suspend fun send(buffer: ByteBuffer, timeoutMillis: Long) =
-    Request.request(method, url, headers, null, true, buffer, timeoutMillis)
-  override suspend fun send(followRedirect: Boolean, buffer: ByteBuffer, timeoutMillis: Long) =
-    Request.request(method, url, headers, null, followRedirect, buffer, timeoutMillis)
+  override suspend fun send(timeoutMillis: Long, buffer: ByteBuffer) =
+    Request.request(method, url, headers, null, true, timeoutMillis, buffer)
+  override suspend fun send(followRedirect: Boolean, timeoutMillis: Long, buffer: ByteBuffer) =
+    Request.request(method, url, headers, null, followRedirect, timeoutMillis, buffer)
 }
 class UrlDefinitionBodyForbidden internal constructor(
   method: Method, url: String
 ): UrlDefinition<UrlDefinitionBodyForbidden>(method, url), RequestDefinition<Nothing> {
   override fun that() = this
-  override suspend fun send(buffer: ByteBuffer, timeoutMillis: Long) =
-    Request.request(method, url, headers, null, true, buffer, timeoutMillis)
-  override suspend fun send(followRedirect: Boolean, buffer: ByteBuffer, timeoutMillis: Long) =
-    Request.request(method, url, headers, null, followRedirect, buffer, timeoutMillis)
+  override suspend fun send(timeoutMillis: Long, buffer: ByteBuffer) =
+    Request.request(method, url, headers, null, true, timeoutMillis, buffer)
+  override suspend fun send(followRedirect: Boolean, timeoutMillis: Long, buffer: ByteBuffer) =
+    Request.request(method, url, headers, null, followRedirect, timeoutMillis, buffer)
 }
