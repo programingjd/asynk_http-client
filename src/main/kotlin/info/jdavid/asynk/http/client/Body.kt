@@ -52,8 +52,7 @@ interface Body {
   }
 
   companion object {
-    fun from(file: File) = from(file, MediaType.fromFile(file)
-                                                                                   ?: MediaType.OCTET_STREAM)
+    fun from(file: File) = from(file, MediaType.fromFile(file) ?: MediaType.OCTET_STREAM)
     fun from(file: File, mediaType: String) = FileBody(file, mediaType)
     fun from(text: String, mediaType: String = MediaType.TEXT) = StringBody(
       text, mediaType)
