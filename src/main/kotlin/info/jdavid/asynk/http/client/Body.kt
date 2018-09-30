@@ -1,14 +1,14 @@
 package info.jdavid.asynk.http.client
 
+import info.jdavid.asynk.core.asyncRead
+import info.jdavid.asynk.core.asyncWrite
 import info.jdavid.asynk.http.MediaType
-import kotlinx.coroutines.experimental.nio.aRead
-import kotlinx.coroutines.experimental.nio.aWrite
+import kotlinx.coroutines.experimental.withTimeout
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousFileChannel
 import java.nio.channels.AsynchronousSocketChannel
 import java.nio.file.StandardOpenOption
-import java.util.concurrent.TimeUnit
 
 interface Body {
 
@@ -25,10 +25,11 @@ interface Body {
         var position = 0L
         while (true) {
           buffer.clear()
-          val read = channel.aRead(buffer, position)
-          if (read == -1) break
+          val read = channel.asyncRead(buffer, position)
+          if (read == -1L) break
           position += read
-          socket.aWrite(buffer.flip() as ByteBuffer, 5000, TimeUnit.MILLISECONDS)
+          buffer.flip()
+          withTimeout(5000L) { socket.asyncWrite(buffer) }
         }
       }
     }
@@ -39,7 +40,7 @@ interface Body {
     override suspend fun byteLength() = bytes.size.toLong()
     override fun contentType() = mediaType
     override suspend fun writeTo(socket: AsynchronousSocketChannel, buffer: ByteBuffer) {
-      socket.aWrite(ByteBuffer.wrap(bytes), 5000, TimeUnit.MILLISECONDS)
+      withTimeout(5000L) { socket.asyncWrite(ByteBuffer.wrap(bytes)) }
     }
   }
 
@@ -47,7 +48,7 @@ interface Body {
     override suspend fun byteLength() = bytes.size.toLong()
     override fun contentType() = mediaType
     override suspend fun writeTo(socket: AsynchronousSocketChannel, buffer: ByteBuffer) {
-      socket.aWrite(ByteBuffer.wrap(bytes), 5000, TimeUnit.MILLISECONDS)
+      withTimeout(5000L) { socket.asyncWrite(ByteBuffer.wrap(bytes)) }
     }
   }
 

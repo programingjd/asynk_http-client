@@ -60,9 +60,9 @@ internal abstract class AbstractRequest<T: AsynchronousSocketChannel>: Request.R
 
   protected abstract suspend fun connect(channel: T, address: InetSocketAddress)
 
-  protected abstract suspend fun read(channel: T, timeoutMillis: Long, buffer: ByteBuffer): Int
+  protected abstract suspend fun read(channel: T, timeoutMillis: Long, buffer: ByteBuffer): Long
 
-  protected abstract suspend fun write(channel: T, timeoutMillis: Long, buffer: ByteBuffer): Int
+  protected abstract suspend fun write(channel: T, timeoutMillis: Long, buffer: ByteBuffer): Long
 
 //  private fun debug(buffer: ByteBuffer) {
 //    buffer.flip()

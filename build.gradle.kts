@@ -26,7 +26,7 @@ plugins {
 }
 
 group = "info.jdavid.asynk"
-version = "0.0.0.15"
+version = "0.0.0.16"
 
 repositories {
   jcenter()
@@ -35,9 +35,8 @@ repositories {
 
 dependencies {
   implementation(kotlin("stdlib-jdk8"))
-  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:0.26.1")
-  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-nio:0.26.1")
-  implementation("info.jdavid.asynk:http:0.0.0.15")
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:0.27.0")
+  implementation("info.jdavid.asynk:http:0.0.0.16")
 //  implementation("com.github.marianobarrios:tls-channel:0.2.0")
   implementation("org.slf4j:slf4j-api:1.7.25")
   testImplementation("org.junit.jupiter:junit-jupiter-api:5.3.0")
