@@ -3,7 +3,7 @@ package info.jdavid.asynk.http.client
 import info.jdavid.asynk.core.asyncConnect
 import info.jdavid.asynk.core.asyncRead
 import info.jdavid.asynk.core.asyncWrite
-import kotlinx.coroutines.experimental.withTimeout
+import kotlinx.coroutines.withTimeout
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousSocketChannel

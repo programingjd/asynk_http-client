@@ -3,7 +3,7 @@ package info.jdavid.asynk.http.client
 import com.fasterxml.jackson.databind.ObjectMapper
 import info.jdavid.asynk.http.Headers
 import info.jdavid.asynk.http.MediaType
-import kotlinx.coroutines.experimental.runBlocking
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.*
 

@@ -3,7 +3,7 @@ package info.jdavid.asynk.http.client
 import info.jdavid.asynk.core.asyncRead
 import info.jdavid.asynk.core.asyncWrite
 import info.jdavid.asynk.http.MediaType
-import kotlinx.coroutines.experimental.withTimeout
+import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousFileChannel

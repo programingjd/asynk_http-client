@@ -1,6 +1,6 @@
 package info.jdavid.asynk.http.client
 
-import kotlinx.coroutines.experimental.runBlocking
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.*
 import java.net.URLEncoder
