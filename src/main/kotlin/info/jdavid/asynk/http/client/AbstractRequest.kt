@@ -7,7 +7,7 @@ import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousSocketChannel
 
-internal abstract class AbstractRequest<T: AsynchronousSocketChannel>: Request.Requester {
+internal abstract class AbstractRequest<C: AsynchronousSocketChannel, H: Any>: Request.Requester {
 
   override suspend fun <T: Body>request(method: Method, host: String, port: Int,
                                         pathWithQueryAndFragment: String,
@@ -26,7 +26,7 @@ internal abstract class AbstractRequest<T: AsynchronousSocketChannel>: Request.R
     headers.set(Headers.ACCEPT_ENCODING, "identity")
     return open().use { socket ->
       connect(socket, InetSocketAddress(host, port))
-
+      val handshake = handshake(host, socket, timeoutMillis, buffer)
       buffer.put("${method} ${pathWithQueryAndFragment} HTTP/1.1".toByteArray(Charsets.ISO_8859_1))
       buffer.put(CRLF)
       for (line in headers.lines) {
@@ -36,33 +36,39 @@ internal abstract class AbstractRequest<T: AsynchronousSocketChannel>: Request.R
       buffer.put(CRLF)
       //debug(buffer)
       buffer.flip()
-      while (buffer.remaining() > 0) write(socket, timeoutMillis, buffer)
+      while (buffer.remaining() > 0) write(socket, handshake, timeoutMillis, buffer)
       body?.writeTo(socket, buffer)
 
       buffer.clear()
-      if (read(socket, timeoutMillis, buffer) < 16) throw IncompleteResponseException()
+      if (read(socket, handshake, timeoutMillis, buffer) < 16) throw IncompleteResponseException()
       buffer.flip()
       val httpVersion = Http.httpVersion(buffer)
       val status = Http.status(buffer)
       if (buffer.remaining() < 4) {
         buffer.compact()
-        if (read(socket, timeoutMillis, buffer) < 4) throw IncompleteResponseException()
+        if (read(socket, handshake, timeoutMillis, buffer) < 4) throw IncompleteResponseException()
         buffer.flip()
       }
       val responseHeaders = Headers()
       Http.headers(socket, buffer, responseHeaders)
       Http.body(socket, httpVersion, buffer, true, false, responseHeaders, null)
+      terminate(socket, handshake, buffer)
       Request.Response(status, responseHeaders, buffer)
     }
   }
 
-  protected abstract suspend fun open(): T
+  protected abstract suspend fun open(): C
 
-  protected abstract suspend fun connect(channel: T, address: InetSocketAddress)
+  protected abstract suspend fun terminate(channel: C, handshake: H, buffer: ByteBuffer)
 
-  protected abstract suspend fun read(channel: T, timeoutMillis: Long, buffer: ByteBuffer): Long
+  protected abstract suspend fun connect(channel: C, address: InetSocketAddress)
 
-  protected abstract suspend fun write(channel: T, timeoutMillis: Long, buffer: ByteBuffer): Long
+  protected abstract suspend fun handshake(host: String, channel: C,
+                                           timeoutMillis: Long, buffer: ByteBuffer): H
+
+  protected abstract suspend fun read(channel: C, handshake: H, timeoutMillis: Long, buffer: ByteBuffer): Long
+
+  protected abstract suspend fun write(channel: C, handshake: H, timeoutMillis: Long, buffer: ByteBuffer): Long
 
 //  private fun debug(buffer: ByteBuffer) {
 //    buffer.flip()
