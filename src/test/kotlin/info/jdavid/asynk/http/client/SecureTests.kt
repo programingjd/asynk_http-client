@@ -12,7 +12,8 @@ class SecureTests {
   @Test
   fun test() {
     runBlocking {
-      val response = Post.url("https://httpbin.org/post").body("abc").send()
+//      val response = Post.url("https://httpbin.org/post").body("abc").send()
+      val response = Get.url("https://google.com").send()
       Assertions.assertEquals(200, response.status)
       Assertions.assertEquals(MediaType.JSON, response.headers.value(Headers.CONTENT_TYPE))
       Assertions.assertEquals("close", response.headers.value(Headers.CONNECTION))
