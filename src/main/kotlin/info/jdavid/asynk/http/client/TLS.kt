@@ -364,9 +364,7 @@ object TLS {
 //    "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256" to 0x009e.toShort(),
 //    "TLS_DHE_RSA_WITH_AES_128_CBC_SHA" to 0xc033.toShort(),
     "TLS_RSA_WITH_AES_128_CBC_SHA" to 0x002f.toShort()
-  )/*.filter {
-    Cipher.getInstance()
-  }*/
+  )
 
   val curves = mapOf(
     "secp256r1" to 0x0023.toShort(),
