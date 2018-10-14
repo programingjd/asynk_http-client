@@ -5,6 +5,7 @@ import info.jdavid.asynk.core.asyncRead
 import info.jdavid.asynk.core.asyncWrite
 import info.jdavid.asynk.http.Crypto
 import kotlinx.coroutines.withTimeout
+import java.lang.RuntimeException
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousSocketChannel
@@ -55,9 +56,27 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
       channel.asyncRead(buffer)
       buffer.flip()
       println(Crypto.hex(ByteArray(buffer.remaining()).apply { buffer.get(this); buffer.flip() }))
-      println(TLS.record(buffer))
+
+
+      val serverHello = nextRecord(channel, buffer) as TLS.Handshake.ServerHello.Fragment
+      val certificate = nextRecord(channel, buffer)
 
       Handshake()
+    }
+  }
+
+  private suspend fun nextRecord(channel: AsynchronousSocketChannel, buffer: ByteBuffer): TLS.Fragment {
+    return TLS.record(buffer).let {
+      if (it is TLS.Alert.Fragment) {
+        if (it.level == TLS.Alert.Level.FATAL) throw RuntimeException(it.description.toString())
+        if (buffer.remaining() == 0) {
+          buffer.flip()
+          channel.asyncRead(buffer)
+          buffer.flip()
+        }
+        nextRecord(channel, buffer)
+      }
+      else it
     }
   }
 

@@ -1,27 +1,30 @@
 package info.jdavid.asynk.http.client
 
 import info.jdavid.asynk.http.Crypto
+import org.slf4j.LoggerFactory
 import java.lang.RuntimeException
 import java.nio.ByteBuffer
 import java.security.SecureRandom
 
 object TLS {
 
+  private val logger = LoggerFactory.getLogger(TLS::class.java)
+
   interface Fragment
 
   object Alert {
 
-    operator fun invoke(buffer: ByteBuffer): Message {
+    operator fun invoke(buffer: ByteBuffer): Alert.Fragment {
       // length should be 2
       @Suppress("UsePropertyAccessSyntax")
       if (buffer.getShort() != 0x02.toShort()) throw RuntimeException("Unexpected Alert record length.")
 
       val level = Level.valueOf(buffer.get())
       val description = Description.valueOf(buffer.get())
-      return Message(level, description)
+      return Fragment(level, description)
     }
 
-    data class Message(val level: Level, val description: Description): Fragment
+    data class Fragment(val level: Level, val description: Description): TLS.Fragment
 
     enum class Level(private val id: Byte) {
       WARNING(0x01.toByte()),
@@ -75,25 +78,30 @@ object TLS {
 
     fun clientHello(host: String, buffer: ByteBuffer) {
       ContentType.HANDSHAKE.record(buffer) {
-        ClientHello(host, it)
+        ClientHello(host, null, it)
       }
+    }
 
+    fun clientHello(host: String, sessionId: ByteArray, buffer: ByteBuffer) {
+      ContentType.HANDSHAKE.record(buffer) {
+        ClientHello(host, sessionId, it)
+      }
     }
 
     fun read(buffer: ByteBuffer): Fragment {
       val length = buffer.getShort()
       return when (HandshakeType.valueOf(buffer.get(buffer.position()))) {
         HandshakeType.HELLO_REQUEST -> TODO()
-        HandshakeType.SERVER_HELLO -> TODO()
+        HandshakeType.SERVER_HELLO -> ServerHello(buffer)
+        HandshakeType.CERTIFICATE -> ServerCertificate(buffer)
         else -> throw RuntimeException("Unexpected record type.")
       }
     }
 
     object ClientHello {
 
-      private val handshakeType: Byte = 0x01
-
       operator fun invoke(host: String,
+                          sessionId: ByteArray?,
                           buffer: ByteBuffer): ByteArray {
         // HandshakeType + uint24 length will be updated at the end
         val position = buffer.position()
@@ -110,12 +118,18 @@ object TLS {
 
         // SessionID: opaque byte[0..32]
         //buffer.put(sessionId)
-        buffer.put(0x00)
+        if (sessionId == null) {
+          buffer.put(0x00)
+        }
+        else {
+          buffer.put(sessionId.size.toByte())
+          buffer.put(sessionId)
+        }
 
         // CipherSuite byte[2]
-        buffer.putShort((cyperSuites.size * 2).toShort())
-        for (suite in cyperSuites) {
-          buffer.put(suite.value)
+        buffer.putShort((cipherSuites.size * 2).toShort())
+        for (suite in cipherSuites) {
+          buffer.putShort(suite.value)
         }
 
         // Compression byte[2]
@@ -127,7 +141,7 @@ object TLS {
         // update handshake type + length
         val size = buffer.position() - position - 4
         buffer.putInt(position, size)
-        buffer.put(position, handshakeType)
+        buffer.put(position, HandshakeType.CLIENT_HELLO.id)
 
         return random
       }
@@ -144,15 +158,14 @@ object TLS {
           supportedGroups(buffer)
           ecPointFormats(buffer)
           renegotiationInfo(buffer)
-          signedCertificateTimestamp(buffer)
 
           val size = (buffer.position() - position - 2).toShort()
           buffer.putShort(position, size)
         }
 
-        fun serverName(host: String, buffer: ByteBuffer) {
+        private fun serverName(host: String, buffer: ByteBuffer) {
           // Extension type = ServerName 0x0000
-          buffer.putShort(0x0000)
+          buffer.putShort(ExtensionType.SERVER_NAME.id)
 
           // lengths, updated at the end
           val position = buffer.position()
@@ -173,9 +186,9 @@ object TLS {
           buffer.putShort(position + 5, (size - 7).toShort())
         }
 
-        fun statusRequest(buffer: ByteBuffer) {
+        private fun statusRequest(buffer: ByteBuffer) {
           // Extension type = StatusRequest 0x0005
-          buffer.putShort(0x0005)
+          buffer.putShort(ExtensionType.STATUS_REQUEST.id)
 
           // length
           buffer.putShort(5)
@@ -185,9 +198,9 @@ object TLS {
           buffer.putShort(0)
         }
 
-        fun supportedGroups(buffer: ByteBuffer) {
+        private fun supportedGroups(buffer: ByteBuffer) {
           // Extension type = SupportedGroups 0x000a
-          buffer.putShort(0x000a)
+          buffer.putShort(ExtensionType.SUPPORTED_GROUPS.id)
 
           // lengths
           buffer.putShort((curves.size * 2 + 2).toShort())
@@ -198,9 +211,9 @@ object TLS {
           }
         }
 
-        fun ecPointFormats(buffer: ByteBuffer) {
+        private fun ecPointFormats(buffer: ByteBuffer) {
           // Extension type = ECPointFormats 0x000b
-          buffer.putShort(0x000b)
+          buffer.putShort(ExtensionType.EC_POINT_FORMATS.id)
 
           // length
           buffer.putShort(2)
@@ -209,9 +222,9 @@ object TLS {
           buffer.put(0x00)
         }
 
-        fun renegotiationInfo(buffer: ByteBuffer) {
+        private fun renegotiationInfo(buffer: ByteBuffer) {
           // Extension type = SignatureAlgorithms 0xff01
-          buffer.putShort(0xff01.toShort())
+          buffer.putShort(ExtensionType.RENEGOTIATION_INFO.id)
 
           // length
           buffer.putShort(1)
@@ -219,15 +232,66 @@ object TLS {
           buffer.put(0x00)
         }
 
-        fun signedCertificateTimestamp(buffer: ByteBuffer) {
-          // Extension type = SCT 0x0012
-          buffer.putShort(0x0012)
+      }
 
-          // length
-          buffer.putShort(0)
+    }
+
+    object ServerHello {
+
+      @Suppress("UsePropertyAccessSyntax")
+      operator fun invoke(buffer: ByteBuffer): ServerHello.Fragment {
+        // Version major + minor (TLS 1.2 is ok here).
+        val major = buffer.get()
+        if (major != 0x03.toByte()) throw RuntimeException("Unexpected tls major version.")
+        val minor = buffer.get()
+        if (minor < 0x00 || minor > 0x04) throw RuntimeException("Unexpected tls minor version.")
+
+        val random = ByteArray(32).apply { buffer.get(this) }
+
+        val sessionId = buffer.get().let {
+          if (it == 0x00.toByte()) null else ByteArray(it.toInt()).apply { buffer.get() }
         }
 
+        val cipherSuite =
+          cipherSuites.entries.find { it.value == buffer.getShort() }?.key ?: throw RuntimeException()
+
+        val compression = buffer.get()
+        if (compression != 0x00.toByte()) throw RuntimeException()
+
+        val extensionsLength = buffer.getShort()
+        buffer.position(buffer.position() + extensionsLength)
+
+        return Fragment(sessionId, random, cipherSuite)
       }
+
+      data class Fragment(
+        @Suppress("ArrayInDataClass") val sessionId: ByteArray?,
+        @Suppress("ArrayInDataClass") val random: ByteArray,
+        val cipherSuite: String
+      ): TLS.Fragment
+
+    }
+
+    object ServerCertificate {
+
+      @Suppress("UsePropertyAccessSyntax")
+      operator fun invoke(buffer: ByteBuffer): ServerCertificate.Fragment {
+        buffer.get() // ignore last (high) byte for the length
+        var chainLength = buffer.getShort().toInt()
+        val certs = ArrayList<ByteArray>(1)
+        while (chainLength > 0) {
+          buffer.get() // ignore last (high) byte for the length
+          val certLength = buffer.getShort().toInt()
+          certs.add(ByteArray(certLength).apply { buffer.get(this) })
+          chainLength -= (certLength + 3)
+        }
+
+        return Fragment(certs.first())
+      }
+
+      data class Fragment(
+        @Suppress("ArrayInDataClass") val certificate: ByteArray
+      ): TLS.Fragment
 
     }
 
@@ -241,22 +305,22 @@ object TLS {
     }
   }
 
-  fun version(buffer: ByteBuffer): ContentType {
+  private fun version(buffer: ByteBuffer): ContentType {
     val recordType = buffer.get()
     val major = buffer.get()
     if (major != 0x03.toByte()) throw RuntimeException("Unexpected tls major version.")
     val minor = buffer.get() // should be 0x01
-    if (major < 0x00 || major > 0x04) throw RuntimeException("Unexpected tls minor version.")
+    if (minor < 0x00 || minor > 0x04) throw RuntimeException("Unexpected tls minor version.")
     return ContentType.valueOf(recordType)
   }
 
-  val cyperSuites = mapOf(
-    "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256" to byteArrayOf(0xc0.toByte(), 0x2b.toByte()),
-    "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256" to byteArrayOf(0xc0.toByte(), 0x23.toByte()),
-    "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA" to byteArrayOf(0xc0.toByte(), 0x09.toByte()),
-    "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256" to byteArrayOf(0x00.toByte(), 0x9e.toByte()),
-    "TLS_DHE_RSA_WITH_AES_128_CBC_SHA" to byteArrayOf(0xc0.toByte(), 0x33.toByte()),
-    "TLS_RSA_WITH_AES_128_CBC_SHA" to byteArrayOf(0x00.toByte(), 0x2f.toByte())
+  val cipherSuites = mapOf(
+    "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256" to 0xc02b.toShort(),
+    "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256" to 0xc023.toShort(),
+    "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA" to 0xc009.toShort(),
+    "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256" to 0x009e.toShort(),
+    "TLS_DHE_RSA_WITH_AES_128_CBC_SHA" to 0xc033.toShort(),
+    "TLS_RSA_WITH_AES_128_CBC_SHA" to 0x002f.toShort()
   )/*.filter {
     Cipher.getInstance()
   }*/
@@ -298,22 +362,74 @@ object TLS {
     }
   }
 
-  enum class HandshakeType(private val id: Byte) {
+  enum class HandshakeType(internal val id: Byte) {
     HELLO_REQUEST(0x00),
     CLIENT_HELLO(0x01),
     SERVER_HELLO(0x02),
-    CERTIFICATE(0x03),
-    SERVER_KEY_EXCHANGE(0x04),
-    CERTIFICATE_REQUEST(0x05),
-    SERVER_HELLO_DONE(0x06),
-    CERTIFICATE_VERIFY(0x07),
-    CLIENT_KEY_EXCHANGE(0x08),
-    FINISHED(0x09);
+    HELLO_VERIFY_REQUEST(0x03),
+    NEW_SESSION_TICKET(0x04),
+    END_OF_EARLY_DATA(0x05),
+    HELLO_RETRY_REQUEST(0x06),
+    ENCRYPTED_EXTENSIONS(0x08),
+    CERTIFICATE(0x0b),
+    SERVER_KEY_EXCHANGE(0x0c),
+    CERTIFICATE_REQUEST(0x0d),
+    SERVER_HELLO_DONE(0x0e),
+    CERTIFICATE_VERIFY(0x0f),
+    CLIENT_KEY_EXCHANGE(0x10),
+    FINISHED(0x14),
+    CERTIFICATE_URL(0x15),
+    CERTIFICATE_STATUS(0x16),
+    SUPPLEMENTAL_DATA(0x17),
+    KEY_UPDATE(0x18),
+    MESSAGE_HASH(0xfe.toByte());
 
     companion object {
       private val values = HandshakeType.values().associate { it.id to it }
       fun valueOf(id: Byte) =
         values[id] ?: throw RuntimeException("Unexpected handshake type 0x${Crypto.hex(byteArrayOf(id))}.")
+    }
+  }
+
+  enum class ExtensionType(internal val id: Short) {
+    SERVER_NAME(0x0000),
+    CLIENT_CERTIFICATE_URL(0x0002),
+    TRUSTED_CA_KEYS(0x0003),
+    STATUS_REQUEST(0x0005),
+    USER_MAPPING(0x0006),
+    CERT_TYPE(0x0009),
+    SUPPORTED_GROUPS(0x000a),
+    EC_POINT_FORMATS(0x000b),
+    SIGNATURE_ALGORITHMS(0x000d),
+    USE_SRTP(0x000e),
+    HEARTBEAT(0x000f),
+    APPLICATION_LAYER_PROTOCOL_NEGOTIATION(0x0010),
+    STATUS_REQUEST_V2(0x0011),
+    CLIENT_CERTIFICATE_TYPE(0x0012),
+    SERVER_CERTIFICATE_TYPE(0x0014),
+    PADDING(0x0015),
+    ENCRYPT_THEN_MAC(0x0016),
+    EXTENDED_MASTER_SECRET(0x0017),
+    TOKEN_BINDING(0x0018),
+    CACHED_INFO(0x0019),
+    RECORD_SIZE_LIMIT(0x001c),
+    SESSION_TICKET(0x0023),
+    PRE_SHARED_KEY(0x0029),
+    EARLY_DATA(0x002a),
+    SUPPORTED_VERSION(0x002b),
+    COOKIE(0x002c),
+    PSK_KEY_EXCHANGE_MODES(0x002d),
+    CERTIFICATE_AUTHORITIES(0x002f),
+    OID_FILTERS(0x0030),
+    POST_HANDSHAKE_AUTH(0x0031),
+    SIGNATURE_ALGORITHM_CERT(0x0032),
+    KEY_SHARE(0x0033),
+    RENEGOTIATION_INFO(0xff01.toShort());
+
+    companion object {
+      private val values = ExtensionType.values().associate { it.id to it }
+      fun valueOf(id: Short) =
+        values[id] ?: throw RuntimeException("Unexpected extension type.")
     }
   }
 
