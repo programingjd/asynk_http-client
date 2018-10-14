@@ -1,7 +1,6 @@
 package info.jdavid.asynk.http.client
 
 import info.jdavid.asynk.http.Crypto
-import org.slf4j.LoggerFactory
 import java.lang.RuntimeException
 import java.nio.ByteBuffer
 import java.security.SecureRandom
@@ -87,7 +86,7 @@ object TLS {
     }
 
     fun read(buffer: ByteBuffer): Fragment {
-      val length = buffer.getShort()
+      @Suppress("UsePropertyAccessSyntax") buffer.getShort() // record length
       return when (HandshakeType.valueOf(buffer.get(buffer.position()))) {
         HandshakeType.HELLO_REQUEST -> TODO()
         HandshakeType.SERVER_HELLO -> ServerHello(buffer)
@@ -240,6 +239,7 @@ object TLS {
 
       @Suppress("UsePropertyAccessSyntax")
       operator fun invoke(buffer: ByteBuffer): ServerHello.Fragment {
+        println("server hello")
         buffer.getInt() // 0x02 + 3-byte length
         // Version major + minor (TLS 1.2 is ok here).
         val major = buffer.get()
@@ -250,7 +250,7 @@ object TLS {
         val random = ByteArray(32).apply { buffer.get(this) }
 
         val sessionId = buffer.get().let {
-          if (it == 0x00.toByte()) null else ByteArray(it.toInt()).apply { buffer.get() }
+          if (it == 0x00.toByte()) null else ByteArray(it.toInt()).apply { buffer.get(this) }
         }
 
         val cipherId = buffer.getShort()

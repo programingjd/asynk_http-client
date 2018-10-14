@@ -61,7 +61,6 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
       buffer.flip()
       println(Crypto.hex(ByteArray(buffer.remaining()).apply { buffer.get(this); buffer.flip() }))
 
-
       val serverHello = nextRecord(channel, buffer) as TLS.Handshake.ServerHello.Fragment
       val certificate = nextRecord(channel, buffer)
 
@@ -75,7 +74,7 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
         if (it.level == TLS.Alert.Level.FATAL) throw RuntimeException(it.description.toString())
         logger.info(it.description.toString())
         if (buffer.remaining() == 0) {
-          buffer.flip()
+          buffer.clear()
           channel.asyncRead(buffer)
           buffer.flip()
         }
