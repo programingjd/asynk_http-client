@@ -5,12 +5,16 @@ import info.jdavid.asynk.core.asyncRead
 import info.jdavid.asynk.core.asyncWrite
 import info.jdavid.asynk.http.Crypto
 import kotlinx.coroutines.withTimeout
+import org.slf4j.LoggerFactory
 import java.lang.RuntimeException
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousSocketChannel
 
 internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, SecureRequest.Handshake>() {
+
+  private val logger = LoggerFactory.getLogger(SecureRequest::class.java)
+
 
 //  override suspend fun <T: Body>request(method: Method, host: String, port: Int,
 //                                        pathWithQueryAndFragment: String,
@@ -69,6 +73,7 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
     return TLS.record(buffer).let {
       if (it is TLS.Alert.Fragment) {
         if (it.level == TLS.Alert.Level.FATAL) throw RuntimeException(it.description.toString())
+        logger.info(it.description.toString())
         if (buffer.remaining() == 0) {
           buffer.flip()
           channel.asyncRead(buffer)

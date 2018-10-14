@@ -8,8 +8,6 @@ import java.security.SecureRandom
 
 object TLS {
 
-  private val logger = LoggerFactory.getLogger(TLS::class.java)
-
   interface Fragment
 
   object Alert {
@@ -94,6 +92,8 @@ object TLS {
         HandshakeType.HELLO_REQUEST -> TODO()
         HandshakeType.SERVER_HELLO -> ServerHello(buffer)
         HandshakeType.CERTIFICATE -> ServerCertificate(buffer)
+        HandshakeType.SERVER_KEY_EXCHANGE -> ServerKeyExchange(buffer)
+        HandshakeType.SERVER_HELLO_DONE -> ServerHello(buffer)
         else -> throw RuntimeException("Unexpected record type.")
       }
     }
@@ -155,8 +155,8 @@ object TLS {
 
           serverName(host, buffer)
           statusRequest(buffer)
-          supportedGroups(buffer)
-          ecPointFormats(buffer)
+          //supportedGroups(buffer)
+          //ecPointFormats(buffer)
           renegotiationInfo(buffer)
 
           val size = (buffer.position() - position - 2).toShort()
@@ -240,6 +240,7 @@ object TLS {
 
       @Suppress("UsePropertyAccessSyntax")
       operator fun invoke(buffer: ByteBuffer): ServerHello.Fragment {
+        buffer.getInt() // 0x02 + 3-byte length
         // Version major + minor (TLS 1.2 is ok here).
         val major = buffer.get()
         if (major != 0x03.toByte()) throw RuntimeException("Unexpected tls major version.")
@@ -252,8 +253,9 @@ object TLS {
           if (it == 0x00.toByte()) null else ByteArray(it.toInt()).apply { buffer.get() }
         }
 
+        val cipherId = buffer.getShort()
         val cipherSuite =
-          cipherSuites.entries.find { it.value == buffer.getShort() }?.key ?: throw RuntimeException()
+          cipherSuites.entries.find { it.value == cipherId }?.key ?: throw RuntimeException()
 
         val compression = buffer.get()
         if (compression != 0x00.toByte()) throw RuntimeException()
@@ -276,6 +278,7 @@ object TLS {
 
       @Suppress("UsePropertyAccessSyntax")
       operator fun invoke(buffer: ByteBuffer): ServerCertificate.Fragment {
+        buffer.getInt() // 0x0b + 3-byte length
         buffer.get() // ignore last (high) byte for the length
         var chainLength = buffer.getShort().toInt()
         val certs = ArrayList<ByteArray>(1)
@@ -292,6 +295,46 @@ object TLS {
       data class Fragment(
         @Suppress("ArrayInDataClass") val certificate: ByteArray
       ): TLS.Fragment
+
+    }
+
+    object ServerKeyExchange {
+
+      @Suppress("UsePropertyAccessSyntax")
+      operator fun invoke(buffer: ByteBuffer): ServerKeyExchange.Fragment {
+        buffer.getInt() // 0x0c + 3-byte length
+
+        if (buffer.get() != 0x03.toByte()) throw RuntimeException() // 0x03 for "named curve"
+        val curveId = buffer.getShort()
+        val curve = curves.entries.find { it.value == curveId }?.key ?: throw RuntimeException()
+
+        val pubKeyLength = buffer.get().toInt()
+        val pubKey = ByteArray(pubKeyLength).apply { buffer.get(this) }
+
+        buffer.getShort() // signature type
+        val signatureLength = buffer.getShort().toInt()
+        ByteArray(signatureLength).apply { buffer.get(this) } // Signature
+
+        return Fragment(curve, pubKey)
+      }
+
+      data class Fragment(
+        val curve: String,
+        @Suppress("ArrayInDataClass") val pubKey: ByteArray
+      ): TLS.Fragment
+
+    }
+
+    object ServerHelloDone {
+
+      @Suppress("UsePropertyAccessSyntax")
+      operator fun invoke(buffer: ByteBuffer): ServerHelloDone.Fragment {
+        buffer.getInt() // 0x0e + 3-byte length
+
+        return Fragment()
+      }
+
+      class Fragment: TLS.Fragment
 
     }
 
@@ -315,11 +358,11 @@ object TLS {
   }
 
   val cipherSuites = mapOf(
-    "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256" to 0xc02b.toShort(),
-    "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256" to 0xc023.toShort(),
-    "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA" to 0xc009.toShort(),
-    "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256" to 0x009e.toShort(),
-    "TLS_DHE_RSA_WITH_AES_128_CBC_SHA" to 0xc033.toShort(),
+//    "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256" to 0xc02b.toShort(),
+//    "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256" to 0xc023.toShort(),
+//    "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA" to 0xc009.toShort(),
+//    "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256" to 0x009e.toShort(),
+//    "TLS_DHE_RSA_WITH_AES_128_CBC_SHA" to 0xc033.toShort(),
     "TLS_RSA_WITH_AES_128_CBC_SHA" to 0x002f.toShort()
   )/*.filter {
     Cipher.getInstance()
