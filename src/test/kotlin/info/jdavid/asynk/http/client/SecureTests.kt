@@ -5,11 +5,12 @@ import info.jdavid.asynk.http.Headers
 import info.jdavid.asynk.http.MediaType
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 
 class SecureTests {
 
-  @Test
+  @Disabled @Test
   fun test() {
     runBlocking {
 //      val response = Post.url("https://httpbin.org/post").body("abc").send()

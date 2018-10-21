@@ -2,7 +2,9 @@ package info.jdavid.asynk.http.client
 
 import info.jdavid.asynk.http.Headers
 import info.jdavid.asynk.http.Method
+import info.jdavid.asynk.http.internal.Context
 import info.jdavid.asynk.http.internal.Http
+import java.lang.RuntimeException
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousSocketChannel
@@ -20,7 +22,7 @@ internal abstract class AbstractRequest<C: AsynchronousSocketChannel, H: Any>: R
     }
     headers.set(Headers.HOST, if (port == 80) host else "${host}:${port}")
     if (!headers.has(Headers.CONNECTION)) headers.set(Headers.CONNECTION, "close")
-    if (!headers.has(Headers.USER_AGENT)) headers.set(Headers.USER_AGENT, "asynk/0.0.0.12")
+    if (!headers.has(Headers.USER_AGENT)) headers.set(Headers.USER_AGENT, "asynk/0.0.0.18")
     if (!headers.has(Headers.ACCEPT)) headers.set(Headers.ACCEPT, "*/*")
     if (!headers.has(Headers.ACCEPT_CHARSET)) headers.set(Headers.ACCEPT_CHARSET, "utf-8, *;q=0.1")
     headers.set(Headers.ACCEPT_ENCODING, "identity")
@@ -51,9 +53,27 @@ internal abstract class AbstractRequest<C: AsynchronousSocketChannel, H: Any>: R
       }
       val responseHeaders = Headers()
       Http.headers(socket, buffer, responseHeaders)
-      Http.body(socket, httpVersion, buffer, true, false, responseHeaders, null)
+      val context = object: Context {
+        override var buffer: ByteBuffer? = null
+        override val maxRequestSize = 65536
+      }
+      val code = Http.body(
+        socket,
+        httpVersion,
+        buffer,
+        context,
+        true,
+        false,
+        responseHeaders,
+        null
+      )
+      if (code > 1) throw RuntimeException()
       terminate(socket, handshake, buffer)
-      Request.Response(status, responseHeaders, buffer)
+      Request.Response(
+        status,
+        responseHeaders,
+        if (code == 0) buffer else context.buffer ?: throw RuntimeException()
+      )
     }
   }
 

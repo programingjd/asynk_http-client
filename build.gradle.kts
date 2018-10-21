@@ -27,12 +27,12 @@ repositories {
 dependencies {
   implementation("org.jetbrains.kotlin:kotlin-stdlib:${KOTLIN.version}")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:${KOTLINX.version}")
-  implementation("info.jdavid.asynk:http:${ASYNK.version}")
+  implementation("info.jdavid.asynk:http:${ASYNK.version}.1")
   implementation("info.jdavid.asynk:core:${ASYNK.version}")
   implementation("org.slf4j:slf4j-api:1.7.25")
-  testImplementation("org.junit.jupiter:junit-jupiter-api:5.3.0")
   testImplementation("com.fasterxml.jackson.core:jackson-databind:2.9.7")
-  testRuntime("org.junit.jupiter:junit-jupiter-engine:5.3.0")
+  testImplementation("org.junit.jupiter:junit-jupiter-api:5.3.1")
+  testRuntime("org.junit.jupiter:junit-jupiter-engine:5.3.1")
   testRuntime("org.slf4j:slf4j-jdk14:1.7.25")
 }
 
