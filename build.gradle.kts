@@ -27,7 +27,7 @@ repositories {
 dependencies {
   implementation("org.jetbrains.kotlin:kotlin-stdlib:${KOTLIN.version}")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:${KOTLINX.version}")
-  implementation("info.jdavid.asynk:http:${ASYNK.version}.1")
+  implementation("info.jdavid.asynk:http:${ASYNK.version}")
   implementation("info.jdavid.asynk:core:${ASYNK.version}")
   implementation("org.slf4j:slf4j-api:1.7.25")
   testImplementation("com.fasterxml.jackson.core:jackson-databind:2.9.7")
