@@ -92,7 +92,7 @@ object TLS {
         HandshakeType.SERVER_HELLO -> ServerHello(buffer)
         HandshakeType.CERTIFICATE -> ServerCertificate(buffer)
         HandshakeType.SERVER_KEY_EXCHANGE -> ServerKeyExchange(buffer)
-        HandshakeType.SERVER_HELLO_DONE -> ServerHello(buffer)
+        HandshakeType.SERVER_HELLO_DONE -> ServerHelloDone(buffer)
         else -> throw RuntimeException("Unexpected record type.")
       }
     }
@@ -266,11 +266,13 @@ object TLS {
         return Fragment(sessionId, random, cipherSuite)
       }
 
-      data class Fragment(
-        @Suppress("ArrayInDataClass") val sessionId: ByteArray?,
-        @Suppress("ArrayInDataClass") val random: ByteArray,
+      class Fragment(
+        val sessionId: ByteArray?,
+        val random: ByteArray,
         val cipherSuite: String
-      ): TLS.Fragment
+      ): TLS.Fragment {
+        override fun toString() = "ServerHello.Fragment(sessionId=${Crypto.hex(sessionId ?: byteArrayOf())}},random=${Crypto.hex(random)}},cipherSuite=${cipherSuite})"
+      }
 
     }
 
@@ -292,9 +294,11 @@ object TLS {
         return Fragment(certs.first())
       }
 
-      data class Fragment(
-        @Suppress("ArrayInDataClass") val certificate: ByteArray
-      ): TLS.Fragment
+      class Fragment(
+        val certificate: ByteArray
+      ): TLS.Fragment {
+        override fun toString() = "ServerCertificate.Fragment(certificate=${Crypto.hex(certificate)})"
+      }
 
     }
 
@@ -318,10 +322,12 @@ object TLS {
         return Fragment(curve, pubKey)
       }
 
-      data class Fragment(
+      class Fragment(
         val curve: String,
-        @Suppress("ArrayInDataClass") val pubKey: ByteArray
-      ): TLS.Fragment
+        val pubKey: ByteArray
+      ): TLS.Fragment {
+        override fun toString() = "ServerKeyExchange.Fragment(curve=${curve},pubKey=${Crypto.hex(pubKey)})"
+      }
 
     }
 
@@ -334,7 +340,9 @@ object TLS {
         return Fragment()
       }
 
-      class Fragment: TLS.Fragment
+      class Fragment: TLS.Fragment {
+        override fun toString() = "ServerHelloDone.Fragment()"
+      }
 
     }
 

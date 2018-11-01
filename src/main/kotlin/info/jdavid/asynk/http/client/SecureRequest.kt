@@ -62,7 +62,9 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
       println(Crypto.hex(ByteArray(buffer.remaining()).apply { buffer.get(this); buffer.flip() }))
 
       val serverHello = nextRecord(channel, buffer) as TLS.Handshake.ServerHello.Fragment
-      val certificate = nextRecord(channel, buffer)
+      val serverCertificate = nextRecord(channel, buffer) as TLS.Handshake.ServerCertificate.Fragment
+      //val serverKeyExchange = nextRecord(channel, buffer) as TLS.Handshake.ServerKeyExchange.Fragment
+      val serverHelloDone = nextRecord(channel, buffer) as TLS.Handshake.ServerHelloDone.Fragment
 
       Handshake()
     }

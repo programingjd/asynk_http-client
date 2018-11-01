@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test
 
 class SecureTests {
 
-  @Disabled @Test
+  @Test
   fun test() {
     runBlocking {
 //      val response = Post.url("https://httpbin.org/post").body("abc").send()
