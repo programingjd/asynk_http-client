@@ -73,15 +73,40 @@ object TLS {
 
   object Handshake {
 
-    fun clientHello(host: String, buffer: ByteBuffer) {
-      ContentType.HANDSHAKE.record(buffer) {
+    fun clientHello(host: String, buffer: ByteBuffer, buffer1: ByteBuffer? = null) {
+      ContentType.HANDSHAKE.record(buffer, buffer1) {
         ClientHello(host, null, it)
       }
     }
 
-    fun clientHello(host: String, sessionId: ByteArray, buffer: ByteBuffer) {
-      ContentType.HANDSHAKE.record(buffer) {
+    fun clientHello(host: String, sessionId: ByteArray, buffer: ByteBuffer, buffer1: ByteBuffer? = null) {
+      ContentType.HANDSHAKE.record(buffer, buffer1) {
         ClientHello(host, sessionId, it)
+      }
+    }
+
+    fun certificate(cipherSuite: CipherSuite, buffer: ByteBuffer, buffer1: ByteBuffer? = null) {
+      ContentType.HANDSHAKE.record(buffer, buffer1) {
+        ClientCertificate(cipherSuite, it)
+      }
+    }
+
+    fun keyExchange(cipherSuite: CipherSuite, curve: String, serverPublicKey: ByteArray,
+                    buffer: ByteBuffer, buffer1: ByteBuffer? = null) {
+      ContentType.HANDSHAKE.record(buffer, buffer1) {
+        ClientKeyExchange(cipherSuite, curve, serverPublicKey, it)
+      }
+    }
+
+    fun changeCipherSpec(buffer: ByteBuffer, buffer1: ByteBuffer? = null) {
+      ContentType.CHANGE_CIPHER_SPEC.record(buffer, buffer1) {
+        ChangeCipherSpec(it)
+      }
+    }
+
+    fun finished(cipherSuite: CipherSuite, buffer: ByteBuffer, buffer1: ByteBuffer? = null) {
+      ContentType.HANDSHAKE.record(buffer, buffer1) {
+        Finished(cipherSuite, it)
       }
     }
 
@@ -92,6 +117,7 @@ object TLS {
         HandshakeType.SERVER_HELLO -> ServerHello(buffer)
         HandshakeType.CERTIFICATE -> ServerCertificate(buffer)
         HandshakeType.SERVER_KEY_EXCHANGE -> ServerKeyExchange(buffer)
+        HandshakeType.CERTIFICATE_REQUEST -> CertificateRequest(buffer)
         HandshakeType.SERVER_HELLO_DONE -> ServerHelloDone(buffer)
         else -> throw RuntimeException("Unexpected record type.")
       }
@@ -231,6 +257,47 @@ object TLS {
           buffer.put(0x00)
         }
 
+        // RFC 7627
+        private fun extendedMasterSecret(buffer: ByteBuffer) {
+          buffer.putShort(ExtensionType.EXTENDED_MASTER_SECRET.id)
+
+          // length
+          buffer.putShort(0)
+        }
+
+      }
+
+    }
+
+    object ClientCertificate {
+
+      operator fun invoke(cipherSuite: CipherSuite, buffer: ByteBuffer) {
+        // HandshakeType + uint24 length
+        val position = buffer.position()
+        buffer.putInt(0)
+        buffer.put(position, HandshakeType.CERTIFICATE.id)
+      }
+
+    }
+
+    object ClientKeyExchange {
+
+      operator fun invoke(cipherSuite: CipherSuite,
+                          curve: String, serverPublicKey: ByteArray,
+                          buffer: ByteBuffer) {
+        // HandshakeType + uint24 length will be updated at the end
+        val position = buffer.position()
+        buffer.putInt(0)
+
+        // TODO
+        // ecdhe key
+        buffer.put(0x00) // length
+        buffer.put(byteArrayOf()) // key
+
+        // update handshake type + length
+        val size = buffer.position() - position - 4
+        buffer.putInt(position, size)
+        buffer.put(position, HandshakeType.CLIENT_HELLO.id)
       }
 
     }
@@ -239,8 +306,10 @@ object TLS {
 
       @Suppress("UsePropertyAccessSyntax")
       operator fun invoke(buffer: ByteBuffer): ServerHello.Fragment {
-        println("server hello")
-        buffer.getInt() // 0x02 + 3-byte length
+        buffer.get() // 0x02
+        val length = buffer.getInt24()
+        val position = buffer.position()
+
         // Version major + minor (TLS 1.2 is ok here).
         val major = buffer.get()
         if (major != 0x03.toByte()) throw RuntimeException("Unexpected tls major version.")
@@ -263,15 +332,18 @@ object TLS {
         val extensionsLength = buffer.getShort()
         buffer.position(buffer.position() + extensionsLength)
 
+        assert(buffer.position() == position + length)
         return Fragment(sessionId, random, cipherSuite)
       }
 
       class Fragment(
         val sessionId: ByteArray?,
         val random: ByteArray,
-        val cipherSuite: String
+        val cipherSuite: CipherSuite
       ): TLS.Fragment {
-        override fun toString() = "ServerHello.Fragment(sessionId=${Crypto.hex(sessionId ?: byteArrayOf())}},random=${Crypto.hex(random)}},cipherSuite=${cipherSuite})"
+        private fun hex(a: ByteArray?) = Crypto.hex(a ?: byteArrayOf())
+        override fun toString() =
+          "ServerHello.Fragment(sessionId=${hex(sessionId)},random=${hex(random)},cipherSuite=${cipherSuite})"
       }
 
     }
@@ -280,9 +352,8 @@ object TLS {
 
       @Suppress("UsePropertyAccessSyntax")
       operator fun invoke(buffer: ByteBuffer): ServerCertificate.Fragment {
-        buffer.getInt() // 0x0b + 3-byte length
-        buffer.get() // ignore last (high) byte for the length
-        var chainLength = buffer.getShort().toInt()
+        buffer.get() // 0x0b + 3-byte length
+        var chainLength = buffer.getInt24()
         val certs = ArrayList<ByteArray>(1)
         while (chainLength > 0) {
           buffer.get() // ignore last (high) byte for the length
@@ -306,7 +377,9 @@ object TLS {
 
       @Suppress("UsePropertyAccessSyntax")
       operator fun invoke(buffer: ByteBuffer): ServerKeyExchange.Fragment {
-        buffer.getInt() // 0x0c + 3-byte length
+        buffer.get() // 0x0c
+        val length = buffer.getInt24()
+        val position = buffer.position()
 
         if (buffer.get() != 0x03.toByte()) throw RuntimeException() // 0x03 for "named curve"
         val curveId = buffer.getShort()
@@ -319,6 +392,7 @@ object TLS {
         val signatureLength = buffer.getShort().toInt()
         ByteArray(signatureLength).apply { buffer.get(this) } // Signature
 
+        assert(buffer.position() == position + length)
         return Fragment(curve, pubKey)
       }
 
@@ -328,6 +402,24 @@ object TLS {
       ): TLS.Fragment {
         override fun toString() = "ServerKeyExchange.Fragment(curve=${curve},pubKey=${Crypto.hex(pubKey)})"
       }
+
+    }
+
+    object CertificateRequest {
+
+      @Suppress("UsePropertyAccessSyntax")
+      operator fun invoke(buffer: ByteBuffer): CertificateRequest.Fragment {
+        buffer.get() // 0xd + 3-byte length
+        val length = buffer.getInt24()
+
+        // we are going to send an empty certificate list, so we don't care about the content.
+        val bytes = ByteArray(length)
+        buffer.get(bytes)
+
+        return Fragment()
+      }
+
+      class Fragment: TLS.Fragment
 
     }
 
@@ -342,6 +434,40 @@ object TLS {
 
       class Fragment: TLS.Fragment {
         override fun toString() = "ServerHelloDone.Fragment()"
+      }
+
+    }
+
+    object ChangeCipherSpec {
+
+      operator fun invoke(buffer: ByteBuffer) {
+        buffer.put(0x01)
+      }
+
+    }
+
+    object Finished {
+
+      operator fun invoke(cipherSuite: CipherSuite, buffer: ByteBuffer) {
+
+        // truncate to 12 bytes
+
+
+
+
+        // HandshakeType + uint24 length will be updated at the end
+        val position = buffer.position()
+        buffer.putInt(0)
+
+        // Version major + minor (TLS 1.2 is ok here).
+        buffer.put(0x03)
+        buffer.put(0x03)
+
+        // update handshake type + length
+        val size = buffer.position() - position - 4
+        buffer.putInt(position, size)
+        buffer.put(position, HandshakeType.FINISHED.id)
+
       }
 
     }
@@ -365,13 +491,38 @@ object TLS {
     return ContentType.valueOf(recordType)
   }
 
-  val cipherSuites = mapOf(
+  private fun ByteBuffer.getInt24(): Int {
+    return (get().toInt() and 0xff shl 16) or (get().toInt() and 0xff shl 8) or (get().toInt() and 0xff)
+  }
+
+  interface CipherSuite {
+    fun blockLength(): Int
+    fun verifyDataLength(): Int
+  }
+
+  object TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256: CipherSuite {
+    override fun blockLength() = 16
+    override fun verifyDataLength() = 12
+  }
+
+
+  object TLS_RSA_WITH_AES_128_CBC_SHA: CipherSuite {
+    override fun blockLength() = 16
+    override fun verifyDataLength() = 12
+
+
+
+
+  }
+
+  val cipherSuites = mapOf<CipherSuite, Short>(
 //    "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256" to 0xc02b.toShort(),
 //    "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256" to 0xc023.toShort(),
 //    "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA" to 0xc009.toShort(),
 //    "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256" to 0x009e.toShort(),
 //    "TLS_DHE_RSA_WITH_AES_128_CBC_SHA" to 0xc033.toShort(),
-    "TLS_RSA_WITH_AES_128_CBC_SHA" to 0x002f.toShort()
+//    "TLS_RSA_WITH_AES_128_CBC_SHA" to 0x002f.toShort(),
+    TLS_RSA_WITH_AES_128_CBC_SHA to 0x002f.toShort()
   )
 
   val curves = mapOf(
@@ -386,7 +537,8 @@ object TLS {
     HANDSHAKE(0x16),
     APPLICATION_DATA(0x17);
 
-    fun <T> record(buffer: ByteBuffer, f: (buffer: ByteBuffer) -> T) {
+    fun <T> record(buffer: ByteBuffer, buffer1: ByteBuffer?, f: (buffer: ByteBuffer) -> T) {
+      buffer.clear()
       // TLS ContentType
       buffer.put(id)
       // TLS Version: Major + Minor (0x0301 for TLS 1.0; not TLS 1.2 for compatibility)
@@ -402,6 +554,12 @@ object TLS {
       // Update length
       val length = (buffer.position() - position - 2).toShort()
       buffer.putShort(position, length)
+
+      if (buffer1 != null) {
+        buffer.flip()
+        buffer1.put(buffer)
+        buffer.flip()
+      }
     }
 
     companion object {

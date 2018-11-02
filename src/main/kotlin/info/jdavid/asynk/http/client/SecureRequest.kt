@@ -3,7 +3,6 @@ package info.jdavid.asynk.http.client
 import info.jdavid.asynk.core.asyncConnect
 import info.jdavid.asynk.core.asyncRead
 import info.jdavid.asynk.core.asyncWrite
-import info.jdavid.asynk.http.Crypto
 import kotlinx.coroutines.withTimeout
 import org.slf4j.LoggerFactory
 import java.lang.RuntimeException
@@ -49,38 +48,64 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
 //          buffer.clear()
 //        }
 //      }
-      buffer.clear()
-      TLS.Handshake.clientHello(host, buffer)
-      buffer.flip()
-      println("ClientHello")
-      println(Crypto.hex(ByteArray(buffer.remaining()).apply { buffer.get(this); buffer.flip() }))
+      val buffer1 = ByteBuffer.allocateDirect(16384)
+
+      TLS.Handshake.clientHello(host, buffer, buffer1)
       channel.asyncWrite(buffer, true)
 
-      buffer.clear()
-      channel.asyncRead(buffer)
-      buffer.flip()
-      println(Crypto.hex(ByteArray(buffer.remaining()).apply { buffer.get(this); buffer.flip() }))
+      val serverHello = nextRecord(channel, buffer, buffer1) as TLS.Handshake.ServerHello.Fragment
+      var serverCertificate: TLS.Handshake.ServerCertificate.Fragment? = null
+      var serverKeyExchange: TLS.Handshake.ServerKeyExchange.Fragment? = null
+      var certificateRequest: TLS.Handshake.CertificateRequest.Fragment? = null
+      loop@ while (true) {
+        when (val record = nextRecord(channel, buffer, buffer1)) {
+          is TLS.Handshake.ServerCertificate.Fragment -> serverCertificate = record
+          is TLS.Handshake.ServerKeyExchange.Fragment -> serverKeyExchange = record
+          is TLS.Handshake.CertificateRequest.Fragment -> certificateRequest = record
+          is TLS.Handshake.ServerHelloDone.Fragment -> break@loop
+        }
+      }
 
-      val serverHello = nextRecord(channel, buffer) as TLS.Handshake.ServerHello.Fragment
-      val serverCertificate = nextRecord(channel, buffer) as TLS.Handshake.ServerCertificate.Fragment
-      //val serverKeyExchange = nextRecord(channel, buffer) as TLS.Handshake.ServerKeyExchange.Fragment
-      val serverHelloDone = nextRecord(channel, buffer) as TLS.Handshake.ServerHelloDone.Fragment
+      val cipherSuite = serverHello.cipherSuite
 
-      Handshake()
+      if (certificateRequest != null) {
+        TLS.Handshake.certificate(cipherSuite, buffer, buffer1)
+      }
+
+      if (serverKeyExchange != null) {
+        TLS.Handshake.keyExchange(
+          cipherSuite, serverKeyExchange.curve, serverKeyExchange.pubKey, buffer, buffer1
+        )
+      }
+
+      TLS.Handshake.changeCipherSpec(buffer)
+      channel.asyncWrite(buffer, true)
+
+      TLS.Handshake.finished(cipherSuite, buffer)
+      channel.asyncWrite(buffer, true)
+
+      println("ok")
+      Handshake(cipherSuite, buffer1, ByteBuffer.allocateDirect(16384))
     }
   }
 
-  private suspend fun nextRecord(channel: AsynchronousSocketChannel, buffer: ByteBuffer): TLS.Fragment {
+  private suspend fun nextRecord(channel: AsynchronousSocketChannel, buffer: ByteBuffer,
+                                 buffer1: ByteBuffer? = null): TLS.Fragment {
+    buffer.compact()
+    if (buffer.position() == 0) {
+      channel.asyncRead(buffer)
+      buffer.flip()
+    }
     return TLS.record(buffer).let {
+      if (buffer1 != null) {
+        buffer.flip()
+        buffer1.put(buffer)
+        buffer.flip()
+      }
       if (it is TLS.Alert.Fragment) {
         if (it.level == TLS.Alert.Level.FATAL) throw RuntimeException(it.description.toString())
         logger.info(it.description.toString())
-        if (buffer.remaining() == 0) {
-          buffer.clear()
-          channel.asyncRead(buffer)
-          buffer.flip()
-        }
-        nextRecord(channel, buffer)
+        nextRecord(channel, buffer, buffer1)
       }
       else it
     }
@@ -92,6 +117,7 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
   override suspend fun write(channel: AsynchronousSocketChannel, handshake: Handshake,
                              timeoutMillis: Long, buffer: ByteBuffer) = TODO()
 
-  class Handshake()
+  class Handshake(private val cipherSuite: TLS.CipherSuite,
+                  private val buffer1: ByteBuffer, private val buffer2: ByteBuffer)
 
 }
