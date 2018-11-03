@@ -4,6 +4,8 @@ import info.jdavid.asynk.http.Crypto
 import java.lang.RuntimeException
 import java.nio.ByteBuffer
 import java.security.SecureRandom
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 object TLS {
 
@@ -110,9 +112,10 @@ object TLS {
       }
     }
 
-    fun read(buffer: ByteBuffer): Fragment {
+    operator fun invoke(buffer: ByteBuffer, buffer1: ByteBuffer?): Fragment {
       @Suppress("UsePropertyAccessSyntax") buffer.getShort() // record length
-      return when (HandshakeType.valueOf(buffer.get(buffer.position()))) {
+      val position = buffer.position()
+      val fragment = when (val type = HandshakeType.valueOf(buffer.get(buffer.position()))) {
         HandshakeType.HELLO_REQUEST -> TODO()
         HandshakeType.SERVER_HELLO -> ServerHello(buffer)
         HandshakeType.CERTIFICATE -> ServerCertificate(buffer)
@@ -121,6 +124,14 @@ object TLS {
         HandshakeType.SERVER_HELLO_DONE -> ServerHelloDone(buffer)
         else -> throw RuntimeException("Unexpected record type.")
       }
+      if (buffer1 != null) {
+        val p = buffer.position()
+        val l = buffer.limit()
+        buffer.position(position).limit(p)
+        buffer1.put(buffer)
+        buffer.position(p).limit(l)
+      }
+      return fragment
     }
 
     object ClientHello {
@@ -474,10 +485,10 @@ object TLS {
 
   }
 
-  fun record(buffer: ByteBuffer): Fragment {
+  fun record(buffer: ByteBuffer, buffer1: ByteBuffer?): Fragment {
     return when (version(buffer)) {
       ContentType.ALERT -> Alert(buffer)
-      ContentType.HANDSHAKE -> Handshake.read(buffer)
+      ContentType.HANDSHAKE -> Handshake(buffer, buffer1)
       else -> throw RuntimeException("Unexpected record type.")
     }
   }
@@ -509,6 +520,12 @@ object TLS {
   object TLS_RSA_WITH_AES_128_CBC_SHA: CipherSuite {
     override fun blockLength() = 16
     override fun verifyDataLength() = 12
+
+    fun mac(key: ByteArray): Mac {
+      return Mac.getInstance("HmacSHA1").apply {
+        init(SecretKeySpec(key,"HmacSHA1"))
+      }
+    }
 
 
 
@@ -556,10 +573,13 @@ object TLS {
       buffer.putShort(position, length)
 
       if (buffer1 != null) {
-        buffer.flip()
+        val p = buffer.position()
+        val l = buffer.limit()
+        buffer.position(position + 2).limit(position + 2 + length)
         buffer1.put(buffer)
-        buffer.flip()
+        buffer.position(p).limit(l)
       }
+      buffer.flip()
     }
 
     companion object {

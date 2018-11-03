@@ -78,10 +78,10 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
         )
       }
 
-      TLS.Handshake.changeCipherSpec(buffer)
+      TLS.Handshake.changeCipherSpec(buffer, buffer1)
       channel.asyncWrite(buffer, true)
 
-      TLS.Handshake.finished(cipherSuite, buffer)
+      TLS.Handshake.finished(cipherSuite, buffer, buffer1)
       channel.asyncWrite(buffer, true)
 
       println("ok")
@@ -94,14 +94,9 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
     buffer.compact()
     if (buffer.position() == 0) {
       channel.asyncRead(buffer)
-      buffer.flip()
     }
-    return TLS.record(buffer).let {
-      if (buffer1 != null) {
-        buffer.flip()
-        buffer1.put(buffer)
-        buffer.flip()
-      }
+    buffer.flip()
+    return TLS.record(buffer, buffer1).let {
       if (it is TLS.Alert.Fragment) {
         if (it.level == TLS.Alert.Level.FATAL) throw RuntimeException(it.description.toString())
         logger.info(it.description.toString())
