@@ -5,6 +5,7 @@ import info.jdavid.asynk.http.Headers
 import info.jdavid.asynk.http.MediaType
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import java.security.cert.X509Certificate
 import javax.net.ssl.HostnameVerifier
@@ -15,7 +16,7 @@ import javax.net.ssl.X509TrustManager
 
 class SecureTests {
 
-  @Test
+  @Test @Disabled
   fun test() {
     System.setProperty("jdk.tls.client.cipherSuites","TLS_RSA_WITH_AES_128_CBC_SHA")
     SSLContext.setDefault(

@@ -109,7 +109,7 @@ object TLS {
 
     fun changeCipherSpec(buffer: ByteBuffer, buffer1: ByteBuffer) {
       ContentType.CHANGE_CIPHER_SPEC.record(buffer, buffer1) {
-        ChangeCipherSpec(it)
+        ClientChangeCipherSpec(it)
       }
     }
 
@@ -118,7 +118,7 @@ object TLS {
                  encryptionKeys: Array<ByteArray>,
                  buffer: ByteBuffer, buffer1: ByteBuffer) {
       ContentType.HANDSHAKE.record(buffer, null) {
-        Finished(cipherSuite, masterSecret, encryptionKeys, buffer1, it)
+        ClientFinished(cipherSuite, masterSecret, encryptionKeys, buffer1, it)
       }
     }
 
@@ -362,7 +362,7 @@ object TLS {
     object ServerHello {
 
       @Suppress("UsePropertyAccessSyntax")
-      operator fun invoke(buffer: ByteBuffer): ServerHello.Fragment {
+      operator fun invoke(buffer: ByteBuffer): Fragment {
         buffer.get() // 0x02
         val length = buffer.getInt24()
         val position = buffer.position()
@@ -408,7 +408,7 @@ object TLS {
     object ServerCertificate {
 
       @Suppress("UsePropertyAccessSyntax")
-      operator fun invoke(buffer: ByteBuffer): ServerCertificate.Fragment {
+      operator fun invoke(buffer: ByteBuffer): Fragment {
         buffer.get()
         val length = buffer.getInt24()
         val position = buffer.position()
@@ -438,7 +438,7 @@ object TLS {
     object ServerKeyExchange {
 
       @Suppress("UsePropertyAccessSyntax")
-      operator fun invoke(buffer: ByteBuffer): ServerKeyExchange.Fragment {
+      operator fun invoke(buffer: ByteBuffer): Fragment {
         buffer.get() // 0x0c
         val length = buffer.getInt24()
         val position = buffer.position()
@@ -470,7 +470,7 @@ object TLS {
     object CertificateRequest {
 
       @Suppress("UsePropertyAccessSyntax")
-      operator fun invoke(buffer: ByteBuffer): CertificateRequest.Fragment {
+      operator fun invoke(buffer: ByteBuffer): Fragment {
         buffer.get() // 0xd + 3-byte length
         val length = buffer.getInt24()
 
@@ -481,14 +481,16 @@ object TLS {
         return Fragment()
       }
 
-      class Fragment: TLS.Fragment
+      class Fragment: TLS.Fragment {
+        override fun toString() = "CertificateRequest.Fragment()"
+      }
 
     }
 
     object ServerHelloDone {
 
       @Suppress("UsePropertyAccessSyntax")
-      operator fun invoke(buffer: ByteBuffer): ServerHelloDone.Fragment {
+      operator fun invoke(buffer: ByteBuffer): Fragment {
         buffer.getInt() // 0x0e + 3-byte length
 
         return Fragment()
@@ -500,7 +502,7 @@ object TLS {
 
     }
 
-    object ChangeCipherSpec {
+    object ClientChangeCipherSpec {
 
       operator fun invoke(buffer: ByteBuffer) {
         buffer.put(0x01)
@@ -508,7 +510,21 @@ object TLS {
 
     }
 
-    object Finished {
+    object ServerChangeCipherSpec {
+
+      operator fun invoke(buffer: ByteBuffer): Fragment {
+        buffer.get() // 0x01
+
+        return Fragment()
+      }
+
+      class Fragment: TLS.Fragment {
+        override fun toString() = "ChangeCipherSpec.Fragment()"
+      }
+
+    }
+
+    object ClientFinished {
 
       operator fun invoke(cipherSuite: CipherSuite,
                           masterSecret: ByteArray,
@@ -552,6 +568,7 @@ object TLS {
   fun record(buffer: ByteBuffer, buffer1: ByteBuffer?): Fragment {
     return when (version(buffer)) {
       ContentType.ALERT -> Alert(buffer)
+      ContentType.CHANGE_CIPHER_SPEC -> Handshake.ServerChangeCipherSpec(buffer)
       ContentType.HANDSHAKE -> Handshake(buffer, buffer1)
       else -> throw RuntimeException("Unexpected record type.")
     }

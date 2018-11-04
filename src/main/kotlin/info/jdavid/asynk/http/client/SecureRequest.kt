@@ -95,6 +95,10 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
       TLS.Handshake.finished(cipherSuite, masterSecret, encryptionKeys, buffer, buffer1)
       channel.asyncWrite(buffer, true)
 
+      val changeCipherSpec =
+        nextRecord(channel, buffer, null) as TLS.Handshake.ServerChangeCipherSpec.Fragment
+
+
       println("ok")
       Handshake(cipherSuite, buffer1, ByteBuffer.allocateDirect(16384))
     }
