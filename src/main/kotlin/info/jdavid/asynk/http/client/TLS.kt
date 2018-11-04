@@ -1,9 +1,16 @@
 package info.jdavid.asynk.http.client
 
 import info.jdavid.asynk.http.Crypto
+import java.io.ByteArrayInputStream
 import java.lang.RuntimeException
+import java.lang.UnsupportedOperationException
 import java.nio.ByteBuffer
+import java.security.KeyFactory
 import java.security.SecureRandom
+import java.security.cert.CertificateFactory
+import java.security.interfaces.RSAPublicKey
+import java.security.spec.KeySpec
+import javax.crypto.Cipher
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
@@ -75,40 +82,53 @@ object TLS {
 
   object Handshake {
 
-    fun clientHello(host: String, buffer: ByteBuffer, buffer1: ByteBuffer? = null) {
-      ContentType.HANDSHAKE.record(buffer, buffer1) {
+    fun clientHello(host: String, buffer: ByteBuffer, buffer1: ByteBuffer): ByteArray {
+      return ContentType.HANDSHAKE.record(buffer, buffer1) {
         ClientHello(host, null, it)
       }
     }
 
-    fun clientHello(host: String, sessionId: ByteArray, buffer: ByteBuffer, buffer1: ByteBuffer? = null) {
-      ContentType.HANDSHAKE.record(buffer, buffer1) {
+    fun clientHello(host: String, sessionId: ByteArray,
+                    buffer: ByteBuffer, buffer1: ByteBuffer): ByteArray {
+      return ContentType.HANDSHAKE.record(buffer, buffer1) {
         ClientHello(host, sessionId, it)
       }
     }
 
-    fun certificate(cipherSuite: CipherSuite, buffer: ByteBuffer, buffer1: ByteBuffer? = null) {
+    fun certificate(cipherSuite: CipherSuite, buffer: ByteBuffer, buffer1: ByteBuffer) {
       ContentType.HANDSHAKE.record(buffer, buffer1) {
         ClientCertificate(cipherSuite, it)
       }
     }
 
-    fun keyExchange(cipherSuite: CipherSuite, curve: String, serverPublicKey: ByteArray,
-                    buffer: ByteBuffer, buffer1: ByteBuffer? = null) {
+    fun rsaKeyExchange(cipherSuite: CipherSuite, certificate: ByteArray,
+                       buffer: ByteBuffer, buffer1: ByteBuffer) {
       ContentType.HANDSHAKE.record(buffer, buffer1) {
-        ClientKeyExchange(cipherSuite, curve, serverPublicKey, it)
+        RSAClientKeyExchange(cipherSuite, certificate, it)
       }
     }
 
-    fun changeCipherSpec(buffer: ByteBuffer, buffer1: ByteBuffer? = null) {
+    fun dhKeyExchange(cipherSuite: CipherSuite, certificate: ByteArray,
+                      curve: String, serverPublicKey: ByteArray,
+                      buffer: ByteBuffer, buffer1: ByteBuffer) {
+      ContentType.HANDSHAKE.record(buffer, buffer1) {
+        DHClientKeyExchange(cipherSuite, certificate, curve, serverPublicKey, it)
+      }
+    }
+
+    fun changeCipherSpec(buffer: ByteBuffer, buffer1: ByteBuffer) {
       ContentType.CHANGE_CIPHER_SPEC.record(buffer, buffer1) {
         ChangeCipherSpec(it)
       }
     }
 
-    fun finished(cipherSuite: CipherSuite, buffer: ByteBuffer, buffer1: ByteBuffer? = null) {
+    fun finished(cipherSuite: CipherSuite,
+                 clientRandom: ByteArray,
+                 serverRandom: ByteArray,
+                 certificate: ByteArray,
+                 buffer: ByteBuffer, buffer1: ByteBuffer) {
       ContentType.HANDSHAKE.record(buffer, buffer1) {
-        Finished(cipherSuite, it)
+        Finished(cipherSuite, clientRandom, serverRandom, certificate, buffer1, it)
       }
     }
 
@@ -291,9 +311,39 @@ object TLS {
 
     }
 
-    object ClientKeyExchange {
+    object RSAClientKeyExchange {
 
       operator fun invoke(cipherSuite: CipherSuite,
+                          certificate: ByteArray,
+                          buffer: ByteBuffer) {
+        // HandshakeType + uint24 length will be updated at the end
+        val position = buffer.position()
+        buffer.putInt(0)
+
+        val preMasterSecret = cipherSuite.preMasterSecret()
+        val encryptedPreMasterSecret = cipherSuite.encrypt(certificate, preMasterSecret)
+
+        // Version major + minor (TLS 1.2 is ok here).
+        buffer.put(0x03)
+        buffer.put(0x03)
+
+
+        buffer.put(encryptedPreMasterSecret.size.toByte())
+        buffer.put(encryptedPreMasterSecret)
+
+        // update handshake type + length
+        val size = buffer.position() - position - 4
+        buffer.putInt(position, size)
+        buffer.put(position, HandshakeType.CLIENT_KEY_EXCHANGE.id)
+      }
+
+    }
+
+
+    object DHClientKeyExchange {
+
+      operator fun invoke(cipherSuite: CipherSuite,
+                          certificate: ByteArray,
                           curve: String, serverPublicKey: ByteArray,
                           buffer: ByteBuffer) {
         // HandshakeType + uint24 length will be updated at the end
@@ -308,7 +358,7 @@ object TLS {
         // update handshake type + length
         val size = buffer.position() - position - 4
         buffer.putInt(position, size)
-        buffer.put(position, HandshakeType.CLIENT_HELLO.id)
+        buffer.put(position, HandshakeType.CLIENT_KEY_EXCHANGE.id)
       }
 
     }
@@ -363,23 +413,28 @@ object TLS {
 
       @Suppress("UsePropertyAccessSyntax")
       operator fun invoke(buffer: ByteBuffer): ServerCertificate.Fragment {
-        buffer.get() // 0x0b + 3-byte length
+        buffer.get()
+        val length = buffer.getInt24()
+        val position = buffer.position()
+
+        // 0x0b + 3-byte length
         var chainLength = buffer.getInt24()
         val certs = ArrayList<ByteArray>(1)
         while (chainLength > 0) {
-          buffer.get() // ignore last (high) byte for the length
-          val certLength = buffer.getShort().toInt()
+          val certLength = buffer.getInt24()
           certs.add(ByteArray(certLength).apply { buffer.get(this) })
           chainLength -= (certLength + 3)
         }
 
-        return Fragment(certs.first())
+        assert(buffer.position() == position + length)
+        return Fragment(certs)
       }
 
       class Fragment(
-        val certificate: ByteArray
+        val certificates: List<ByteArray>
       ): TLS.Fragment {
-        override fun toString() = "ServerCertificate.Fragment(certificate=${Crypto.hex(certificate)})"
+        private fun certsString() = certificates.map { Crypto.hex(it) }.joinToString(",")
+        override fun toString() = "ServerCertificate.Fragment(certificates=[${certsString()}])"
       }
 
     }
@@ -459,7 +514,13 @@ object TLS {
 
     object Finished {
 
-      operator fun invoke(cipherSuite: CipherSuite, buffer: ByteBuffer) {
+      operator fun invoke(cipherSuite: CipherSuite,
+                          clientRandom: ByteArray,
+                          serverRandom: ByteArray,
+                          certificate: ByteArray,
+                          buffer1: ByteBuffer,
+                          buffer: ByteBuffer) {
+
 
         // truncate to 12 bytes
 
@@ -509,17 +570,42 @@ object TLS {
   interface CipherSuite {
     fun blockLength(): Int
     fun verifyDataLength(): Int
+    fun preMasterSecret(): ByteArray
+    fun encrypt(certificate: ByteArray, payload: ByteArray): ByteArray
   }
 
   object TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256: CipherSuite {
     override fun blockLength() = 16
     override fun verifyDataLength() = 12
+
+    override fun preMasterSecret() = throw UnsupportedOperationException()
+    override fun encrypt(certificate: ByteArray, payload: ByteArray) = throw UnsupportedOperationException()
+
   }
 
 
   object TLS_RSA_WITH_AES_128_CBC_SHA: CipherSuite {
     override fun blockLength() = 16
     override fun verifyDataLength() = 12
+
+    fun serverPublicKey(certificate: ByteArray): RSAPublicKey {
+      val x509 =
+        CertificateFactory.getInstance("X.509").generateCertificate(ByteArrayInputStream(certificate))
+      return x509.publicKey as RSAPublicKey
+    }
+
+    override fun preMasterSecret(): ByteArray {
+      val bytes = SecureRandom.getInstanceStrong().generateSeed(48)
+      bytes[0] = 0x03
+      bytes[1] = 0x03
+      return bytes
+    }
+
+    override fun encrypt(certificate: ByteArray, payload: ByteArray): ByteArray {
+      val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
+      cipher.init(Cipher.WRAP_MODE, serverPublicKey(certificate))
+      return cipher.wrap(SecretKeySpec(payload, "RSA"))
+    }
 
     fun mac(key: ByteArray): Mac {
       return Mac.getInstance("HmacSHA1").apply {
@@ -554,7 +640,7 @@ object TLS {
     HANDSHAKE(0x16),
     APPLICATION_DATA(0x17);
 
-    fun <T> record(buffer: ByteBuffer, buffer1: ByteBuffer?, f: (buffer: ByteBuffer) -> T) {
+    fun <T> record(buffer: ByteBuffer, buffer1: ByteBuffer?, f: (buffer: ByteBuffer) -> T): T {
       buffer.clear()
       // TLS ContentType
       buffer.put(id)
@@ -566,7 +652,7 @@ object TLS {
       val position = buffer.position()
       buffer.putShort(0)
 
-      f(buffer)
+      val result = f(buffer)
 
       // Update length
       val length = (buffer.position() - position - 2).toShort()
@@ -580,6 +666,7 @@ object TLS {
         buffer.position(p).limit(l)
       }
       buffer.flip()
+      return result
     }
 
     companion object {

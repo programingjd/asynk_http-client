@@ -50,7 +50,7 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
 //      }
       val buffer1 = ByteBuffer.allocateDirect(16384)
 
-      TLS.Handshake.clientHello(host, buffer, buffer1)
+      val clientHelloRandom = TLS.Handshake.clientHello(host, buffer, buffer1)
       channel.asyncWrite(buffer, true)
 
       val serverHello = nextRecord(channel, buffer, buffer1) as TLS.Handshake.ServerHello.Fragment
@@ -66,22 +66,35 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
         }
       }
 
+      if (serverCertificate == null) throw RuntimeException()
+
       val cipherSuite = serverHello.cipherSuite
 
       if (certificateRequest != null) {
         TLS.Handshake.certificate(cipherSuite, buffer, buffer1)
       }
 
-      if (serverKeyExchange != null) {
-        TLS.Handshake.keyExchange(
-          cipherSuite, serverKeyExchange.curve, serverKeyExchange.pubKey, buffer, buffer1
+      val serverHelloRandom = serverHello.random
+      if (serverKeyExchange == null) {
+        TLS.Handshake.rsaKeyExchange(
+          cipherSuite, serverCertificate.certificates.first(),
+          buffer, buffer1
+        )
+      }
+      else {
+        TLS.Handshake.dhKeyExchange(
+          cipherSuite, serverCertificate.certificates.first(),
+          serverKeyExchange.curve, serverKeyExchange.pubKey,
+          buffer, buffer1
         )
       }
 
       TLS.Handshake.changeCipherSpec(buffer, buffer1)
       channel.asyncWrite(buffer, true)
 
-      TLS.Handshake.finished(cipherSuite, buffer, buffer1)
+      TLS.Handshake.finished(cipherSuite, clientHelloRandom, serverHelloRandom,
+                             serverCertificate.certificates.first(),
+                             buffer, buffer1)
       channel.asyncWrite(buffer, true)
 
       println("ok")

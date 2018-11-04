@@ -5,13 +5,34 @@ import info.jdavid.asynk.http.Headers
 import info.jdavid.asynk.http.MediaType
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
+import java.security.cert.X509Certificate
+import javax.net.ssl.HostnameVerifier
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSession
+import javax.net.ssl.X509TrustManager
 
 class SecureTests {
 
   @Test
   fun test() {
+    System.setProperty("jdk.tls.client.cipherSuites","TLS_RSA_WITH_AES_128_CBC_SHA")
+    SSLContext.setDefault(
+      SSLContext.getInstance("TLS").apply {
+        init(null, arrayOf(object: X509TrustManager {
+          override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+          override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+          override fun getAcceptedIssuers(): Array<X509Certificate>? = null
+        }), null)
+        defaultSSLParameters.protocols = arrayOf("TLSv1.2")
+        //defaultSSLParameters.cipherSuites = arrayOf("TLS_RSA_WITH_AES_128_CBC_SHA")
+      }
+    )
+    (java.net.URL("https://google.com").openConnection() as HttpsURLConnection).apply { hostnameVerifier = object: HostnameVerifier {
+      override fun verify(hostname: String?, session: SSLSession?) = true
+    } }.connect()
+    //if (true) return
     runBlocking {
 //      val response = Post.url("https://httpbin.org/post").body("abc").send()
       val response = Get.url("https://google.com").send()
