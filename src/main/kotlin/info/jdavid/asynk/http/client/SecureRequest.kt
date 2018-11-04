@@ -53,14 +53,15 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
       val clientHelloRandom = TLS.Handshake.clientHello(host, buffer, buffer1)
       channel.asyncWrite(buffer, true)
 
-      val serverHello = nextRecord(channel, buffer, buffer1) as TLS.Handshake.ServerHello.Fragment
+      val serverHello =
+        nextRecord(channel, buffer, buffer1) as TLS.Handshake.ServerHello.Fragment
       var serverCertificate: TLS.Handshake.ServerCertificate.Fragment? = null
-      var serverKeyExchange: TLS.Handshake.ServerKeyExchange.Fragment? = null
+      //var serverKeyExchange: TLS.Handshake.ServerKeyExchange.Fragment? = null
       var certificateRequest: TLS.Handshake.CertificateRequest.Fragment? = null
       loop@ while (true) {
         when (val record = nextRecord(channel, buffer, buffer1)) {
           is TLS.Handshake.ServerCertificate.Fragment -> serverCertificate = record
-          is TLS.Handshake.ServerKeyExchange.Fragment -> serverKeyExchange = record
+          //is TLS.Handshake.ServerKeyExchange.Fragment -> serverKeyExchange = record
           is TLS.Handshake.CertificateRequest.Fragment -> certificateRequest = record
           is TLS.Handshake.ServerHelloDone.Fragment -> break@loop
         }
@@ -71,30 +72,27 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
       val cipherSuite = serverHello.cipherSuite
 
       if (certificateRequest != null) {
-        TLS.Handshake.certificate(cipherSuite, buffer, buffer1)
+        TLS.Handshake.certificate(buffer, buffer1)
       }
 
       val serverHelloRandom = serverHello.random
-      if (serverKeyExchange == null) {
+      val preMasterSecret = //if (serverKeyExchange == null) {
         TLS.Handshake.rsaKeyExchange(
           cipherSuite, serverCertificate.certificates.first(),
           buffer, buffer1
         )
-      }
-      else {
-        TLS.Handshake.dhKeyExchange(
-          cipherSuite, serverCertificate.certificates.first(),
-          serverKeyExchange.curve, serverKeyExchange.pubKey,
-          buffer, buffer1
-        )
-      }
+      //}
+
 
       TLS.Handshake.changeCipherSpec(buffer, buffer1)
       channel.asyncWrite(buffer, true)
 
-      TLS.Handshake.finished(cipherSuite, clientHelloRandom, serverHelloRandom,
-                             serverCertificate.certificates.first(),
-                             buffer, buffer1)
+      val masterSecret =
+        TLS.masterSecret(cipherSuite, preMasterSecret, clientHelloRandom, serverHelloRandom)
+
+      val encryptionKeys = cipherSuite.encryptionKeys(masterSecret, serverHelloRandom, clientHelloRandom)
+
+      TLS.Handshake.finished(cipherSuite, masterSecret, encryptionKeys, buffer, buffer1)
       channel.asyncWrite(buffer, true)
 
       println("ok")
