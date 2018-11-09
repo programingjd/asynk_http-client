@@ -17,7 +17,7 @@ import javax.net.ssl.X509TrustManager
 class SecureTests {
 
   @Test @Disabled
-  fun test() {
+  fun testJSK() {
     System.setProperty("jdk.tls.client.cipherSuites","TLS_RSA_WITH_AES_128_CBC_SHA")
     SSLContext.setDefault(
       SSLContext.getInstance("TLS").apply {
@@ -30,10 +30,13 @@ class SecureTests {
         //defaultSSLParameters.cipherSuites = arrayOf("TLS_RSA_WITH_AES_128_CBC_SHA")
       }
     )
-    (java.net.URL("https://google.com").openConnection() as HttpsURLConnection).apply { hostnameVerifier = object: HostnameVerifier {
+    (java.net.URL("https://github.com").openConnection() as HttpsURLConnection).apply { hostnameVerifier = object: HostnameVerifier {
       override fun verify(hostname: String?, session: SSLSession?) = true
     } }.connect()
-    //if (true) return
+  }
+
+  @Test
+  fun test() {
     runBlocking {
 //      val response = Post.url("https://httpbin.org/post").body("abc").send()
       val response = Get.url("https://google.com").send()

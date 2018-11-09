@@ -82,7 +82,8 @@ object TLS {
   object Handshake {
 
     fun clientHello(host: String, buffer: ByteBuffer, buffer1: ByteBuffer): ByteArray {
-      return ContentType.HANDSHAKE.record(buffer, buffer1) {
+      return ContentType.HANDSHAKE.record(buffer, true, buffer1) {
+        println(">>> TLS 1.2 Handshake ClientHello")
         ClientHello(host, null, it)
       }
     }
@@ -90,12 +91,14 @@ object TLS {
     fun clientHello(host: String, sessionId: ByteArray,
                     buffer: ByteBuffer, buffer1: ByteBuffer): ByteArray {
       return ContentType.HANDSHAKE.record(buffer, buffer1) {
+        println(">>> TLS 1.2 Handshake ClientHello")
         ClientHello(host, sessionId, it)
       }
     }
 
     fun certificate(buffer: ByteBuffer, buffer1: ByteBuffer) {
       ContentType.HANDSHAKE.record(buffer, buffer1) {
+        println(">>> TLS 1.2 Handshake Certificate")
         ClientCertificate(it)
       }
     }
@@ -103,12 +106,14 @@ object TLS {
     fun rsaKeyExchange(cipherSuite: CipherSuite, certificate: ByteArray,
                        buffer: ByteBuffer, buffer1: ByteBuffer): ByteArray {
       return ContentType.HANDSHAKE.record(buffer, buffer1) {
+        println(">>> TLS 1.2 Handshake ClientKeyExchange")
         RSAClientKeyExchange(cipherSuite, certificate, it)
       }
     }
 
     fun changeCipherSpec(buffer: ByteBuffer, buffer1: ByteBuffer) {
       ContentType.CHANGE_CIPHER_SPEC.record(buffer, buffer1) {
+        println(">>> TLS 1.2 ChangeCipherSpec")
         ClientChangeCipherSpec(it)
       }
     }
@@ -118,6 +123,7 @@ object TLS {
                  encryptionKeys: Array<ByteArray>,
                  buffer: ByteBuffer, buffer1: ByteBuffer) {
       ContentType.HANDSHAKE.record(buffer, null) {
+        println(">>> TLS 1.2 Handshake Finished")
         ClientFinished(cipherSuite, masterSecret, encryptionKeys, buffer1, it)
       }
     }
@@ -125,14 +131,14 @@ object TLS {
     operator fun invoke(buffer: ByteBuffer, buffer1: ByteBuffer?): Fragment {
       @Suppress("UsePropertyAccessSyntax") buffer.getShort() // record length
       val position = buffer.position()
-      val fragment = when (val type = HandshakeType.valueOf(buffer.get(buffer.position()))) {
+      val fragment = when (val type = HandshakeType.valueOf(buffer.get(buffer.position())).apply { println(this) }) {
         HandshakeType.HELLO_REQUEST -> TODO()
         HandshakeType.SERVER_HELLO -> ServerHello(buffer)
         HandshakeType.CERTIFICATE -> ServerCertificate(buffer)
         HandshakeType.SERVER_KEY_EXCHANGE -> ServerKeyExchange(buffer)
         HandshakeType.CERTIFICATE_REQUEST -> CertificateRequest(buffer)
         HandshakeType.SERVER_HELLO_DONE -> ServerHelloDone(buffer)
-        else -> throw RuntimeException("Unexpected record type.")
+        else -> throw RuntimeException("Unexpected record type ${type}.")
       }
       if (buffer1 != null) {
         val p = buffer.position()
@@ -580,11 +586,38 @@ object TLS {
     if (major != 0x03.toByte()) throw RuntimeException("Unexpected tls major version.")
     val minor = buffer.get() // should be 0x01
     if (minor < 0x00 || minor > 0x04) throw RuntimeException("Unexpected tls minor version.")
+
+    // start debug
+    val p = buffer.position()
+    val n1 = buffer.get(p)
+    val n2 = buffer.get(p+1)
+    val n = (n1.toInt() and 0xff shl 8) or (n2.toInt() and 0xff)
+    println("<<< TLS 1.${minor-1} ${ContentType.valueOf(recordType).name.toLowerCase().capitalize()} " +
+            "[length ${Crypto.hex(byteArrayOf(n1, n2))}]")
+    println(
+      Crypto.hex(byteArrayOf(recordType)) + " " +
+      Crypto.hex(byteArrayOf(major)) + " " +
+      Crypto.hex(byteArrayOf(minor)) + " " +
+      Crypto.hex(byteArrayOf(n1)) + " " +
+      Crypto.hex(byteArrayOf(n2))
+    )
+    println("read ${n} bytes (${Crypto.hex(byteArrayOf(n1, n2))})")
+    ((p+2)..(p+1+n)).map { Crypto.hex(byteArrayOf(buffer.get(it))) }.chunked(16).forEach {
+      println(it.joinToString(" "))
+    }
+    // end debug
+
     return ContentType.valueOf(recordType)
   }
 
   private fun ByteBuffer.getInt24(): Int {
     return (get().toInt() and 0xff shl 16) or (get().toInt() and 0xff shl 8) or (get().toInt() and 0xff)
+  }
+
+  private fun ByteBuffer.getInt24(position: Int): Int {
+    return (get(position).toInt() and 0xff shl 16) or
+           (get(position + 1).toInt() and 0xff shl 8) or
+           (get(position + 2).toInt() and 0xff)
   }
 
   interface CipherSuite {
@@ -701,12 +734,17 @@ object TLS {
     APPLICATION_DATA(0x17);
 
     fun <T> record(buffer: ByteBuffer, buffer1: ByteBuffer?, f: (buffer: ByteBuffer) -> T): T {
+      return record(buffer, false, buffer1, f)
+    }
+
+    fun <T> record(buffer: ByteBuffer, initial: Boolean,
+                   buffer1: ByteBuffer?, f: (buffer: ByteBuffer) -> T): T {
       buffer.clear()
       // TLS ContentType
       buffer.put(id)
       // TLS Version: Major + Minor (0x0301 for TLS 1.0; not TLS 1.2 for compatibility)
       buffer.put(0x03)
-      buffer.put(0x01)
+      buffer.put(if (initial) 0x01.toByte() else 0x03.toByte())
 
       // Length (updated at the end)
       val position = buffer.position()
@@ -725,7 +763,17 @@ object TLS {
         buffer1.put(buffer)
         buffer.position(p).limit(l)
       }
+
+      // start debug
+      val p = buffer.position()
+      println("write ${p} bytes (${Crypto.hex(byteArrayOf(p.toByte()))})")
+      (0..(p-1)).map { Crypto.hex(byteArrayOf(buffer.get(it))) }.chunked(16).forEach {
+        println(it.joinToString(" "))
+      }
+      // end debug
+
       buffer.flip()
+
       return result
     }
 
