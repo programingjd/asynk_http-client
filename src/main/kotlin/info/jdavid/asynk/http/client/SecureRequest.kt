@@ -58,7 +58,7 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
       fragments.addAll(nextRecord(channel, buffer, buffer1))
       val serverHello = fragments.first() as TLS.Handshake.ServerHello.Fragment
 
-      while (!true) {
+      while (true) {
         val record = nextRecord(channel, buffer, buffer1)
         fragments.addAll(record)
         if (
