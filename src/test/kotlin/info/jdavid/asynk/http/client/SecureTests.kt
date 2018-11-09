@@ -133,8 +133,8 @@ class SecureTests {
 
     runBlocking {
 //      val response = Post.url("https://httpbin.org/post").body("abc").send()
-      val response = Get.url("https://google.com").send()
-//      val response = Get.url("https://localhost:8181").send()
+//      val response = Get.url("https://google.com").send()
+      val response = Get.url("https://localhost:8181").send()
       Assertions.assertEquals(200, response.status)
       Assertions.assertEquals(MediaType.JSON, response.headers.value(Headers.CONTENT_TYPE))
       Assertions.assertEquals("close", response.headers.value(Headers.CONNECTION))
