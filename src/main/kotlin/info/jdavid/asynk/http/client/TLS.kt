@@ -22,7 +22,6 @@ object TLS {
     operator fun invoke(buffer: ByteBuffer): Alert.Fragment {
       // length should be 2
       @Suppress("UsePropertyAccessSyntax")
-      if (buffer.getShort() != 0x02.toShort()) throw RuntimeException("Unexpected Alert record length.")
 
       val level = Level.valueOf(buffer.get())
       val description = Description.valueOf(buffer.get())
@@ -129,7 +128,6 @@ object TLS {
     }
 
     operator fun invoke(buffer: ByteBuffer, buffer1: ByteBuffer?): Fragment {
-      @Suppress("UsePropertyAccessSyntax") buffer.getShort() // record length
       val position = buffer.position()
       val fragment = when (val type = HandshakeType.valueOf(buffer.get(buffer.position())).apply { println(this) }) {
         HandshakeType.HELLO_REQUEST -> TODO()
@@ -571,11 +569,38 @@ object TLS {
                    clientRandom: ByteArray, serverRandom: ByteArray) =
     cipherSuite.prf(48, preMasterSecret, "master secret", clientRandom + serverRandom)
 
-  fun record(buffer: ByteBuffer, buffer1: ByteBuffer?): Fragment {
+  fun record(buffer: ByteBuffer, buffer1: ByteBuffer?): List<Fragment> {
     return when (version(buffer)) {
-      ContentType.ALERT -> Alert(buffer)
-      ContentType.CHANGE_CIPHER_SPEC -> Handshake.ServerChangeCipherSpec(buffer)
-      ContentType.HANDSHAKE -> Handshake(buffer, buffer1)
+      ContentType.ALERT -> {
+        @Suppress("UsePropertyAccessSyntax") val length = buffer.getShort()
+        val position = buffer.position()
+        val list = ArrayList<Fragment>(4)
+        while (true) {
+          list.add(Alert(buffer))
+          if (buffer.position() == position + length) break
+        }
+        list
+      }
+      ContentType.CHANGE_CIPHER_SPEC -> {
+        @Suppress("UsePropertyAccessSyntax") val length = buffer.getShort()
+        val position = buffer.position()
+        val list = ArrayList<Fragment>(4)
+        while (true) {
+          list.add(Handshake.ServerChangeCipherSpec(buffer))
+          if (buffer.position() == position + length) break
+        }
+        list
+      }
+      ContentType.HANDSHAKE -> {
+        @Suppress("UsePropertyAccessSyntax") val length = buffer.getShort()
+        val position = buffer.position()
+        val list = ArrayList<Fragment>(4)
+        while (true) {
+          list.add(Handshake(buffer, buffer1))
+          if (buffer.position() == position + length) break
+        }
+        list
+      }
       else -> throw RuntimeException("Unexpected record type.")
     }
   }
@@ -583,9 +608,9 @@ object TLS {
   private fun version(buffer: ByteBuffer): ContentType {
     val recordType = buffer.get()
     val major = buffer.get()
-    if (major != 0x03.toByte()) throw RuntimeException("Unexpected tls major version.")
-    val minor = buffer.get() // should be 0x01
-    if (minor < 0x00 || minor > 0x04) throw RuntimeException("Unexpected tls minor version.")
+    if (major != 0x03.toByte()) throw RuntimeException("Unexpected tls major version ${major}.")
+    val minor = buffer.get()
+    if (minor < 0x00 || minor > 0x04) throw RuntimeException("Unexpected tls minor version ${minor}.")
 
     // start debug
     val p = buffer.position()

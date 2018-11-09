@@ -9,6 +9,7 @@ import java.lang.RuntimeException
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousSocketChannel
+import java.util.LinkedList
 
 internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, SecureRequest.Handshake>() {
 
@@ -53,25 +54,28 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
       val clientHelloRandom = TLS.Handshake.clientHello(host, buffer, buffer1)
       channel.asyncWrite(buffer, true)
 
-      val serverHello =
-        nextRecord(channel, buffer, buffer1) as TLS.Handshake.ServerHello.Fragment
-      var serverCertificate: TLS.Handshake.ServerCertificate.Fragment? = null
-      //var serverKeyExchange: TLS.Handshake.ServerKeyExchange.Fragment? = null
-      var certificateRequest: TLS.Handshake.CertificateRequest.Fragment? = null
-      loop@ while (true) {
-        when (val record = nextRecord(channel, buffer, buffer1)) {
-          is TLS.Handshake.ServerCertificate.Fragment -> serverCertificate = record
-          //is TLS.Handshake.ServerKeyExchange.Fragment -> serverKeyExchange = record
-          is TLS.Handshake.CertificateRequest.Fragment -> certificateRequest = record
-          is TLS.Handshake.ServerHelloDone.Fragment -> break@loop
-        }
-      }
+      val fragments = LinkedList<TLS.Fragment>()
+      fragments.addAll(nextRecord(channel, buffer, buffer1))
+      val serverHello = fragments.first() as TLS.Handshake.ServerHello.Fragment
 
-      if (serverCertificate == null) throw RuntimeException()
+      while (!true) {
+        val record = nextRecord(channel, buffer, buffer1)
+        fragments.addAll(record)
+        if (
+          record.fold(false) { done: Boolean, fragment: TLS.Fragment ->
+            fragment is TLS.Handshake.ServerHelloDone.Fragment
+          }
+        ) break
+      }
 
       val cipherSuite = serverHello.cipherSuite
 
-      if (certificateRequest != null) {
+      val serverCertificate =
+        fragments.find {
+          it is TLS.Handshake.ServerCertificate.Fragment
+        } as TLS.Handshake.ServerCertificate.Fragment
+
+      if (fragments.find { it is TLS.Handshake.CertificateRequest.Fragment } != null) {
         TLS.Handshake.certificate(buffer, buffer1)
       }
 
@@ -95,9 +99,12 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
       TLS.Handshake.finished(cipherSuite, masterSecret, encryptionKeys, buffer, buffer1)
       channel.asyncWrite(buffer, true)
 
-      val changeCipherSpec =
-        nextRecord(channel, buffer, null) as TLS.Handshake.ServerChangeCipherSpec.Fragment
-
+      if (fragments.find { it is TLS.Handshake.ServerChangeCipherSpec.Fragment } == null) {
+        fragments.addAll(nextRecord(channel, buffer, null))
+        fragments.find {
+          it is TLS.Handshake.ServerChangeCipherSpec.Fragment
+        } as TLS.Handshake.ServerChangeCipherSpec.Fragment
+      }
 
       println("ok")
       Handshake(cipherSuite, buffer1, ByteBuffer.allocateDirect(16384))
@@ -105,19 +112,23 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
   }
 
   private suspend fun nextRecord(channel: AsynchronousSocketChannel, buffer: ByteBuffer,
-                                 buffer1: ByteBuffer? = null): TLS.Fragment {
+                                 buffer1: ByteBuffer? = null): List<TLS.Fragment> {
     buffer.compact()
     if (buffer.position() == 0) {
       channel.asyncRead(buffer)
     }
     buffer.flip()
     return TLS.record(buffer, buffer1).let {
-      if (it is TLS.Alert.Fragment) {
-        if (it.level == TLS.Alert.Level.FATAL) throw RuntimeException(it.description.toString())
-        logger.info(it.description.toString())
-        nextRecord(channel, buffer, buffer1)
+      if (it.isEmpty()) throw RuntimeException()
+      val result = it.filter {
+        if (it is TLS.Alert.Fragment) {
+          if (it == TLS.Alert.Level.FATAL) throw RuntimeException(it.description.toString())
+          logger.info(it.description.toString())
+          false
+        }
+        else true
       }
-      else it
+      if (result.isEmpty()) nextRecord(channel, buffer, buffer1) else result
     }
   }
 
