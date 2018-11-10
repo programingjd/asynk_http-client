@@ -692,7 +692,7 @@ object TLS {
       val mac = Mac.getInstance("HMACSHA256").apply {
         init(SecretKeySpec(secret, "HMACSHA256"))
       }
-      var hmac = ByteArray(128)
+      var hmac = byteArrayOf()
       var a = seed
       while (true) {
         a = mac.doFinal(a)

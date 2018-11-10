@@ -3,6 +3,7 @@ package info.jdavid.asynk.http.client
 import info.jdavid.asynk.core.asyncConnect
 import info.jdavid.asynk.core.asyncRead
 import info.jdavid.asynk.core.asyncWrite
+import info.jdavid.asynk.http.Crypto
 import kotlinx.coroutines.withTimeout
 import org.slf4j.LoggerFactory
 import java.lang.RuntimeException
@@ -97,6 +98,17 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
         TLS.masterSecret(cipherSuite, preMasterSecret, clientHelloRandom, serverHelloRandom)
 
       val encryptionKeys = cipherSuite.encryptionKeys(masterSecret, serverHelloRandom, clientHelloRandom)
+
+      // start debug
+      println("PreMasterSecret")
+      preMasterSecret.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
+        println(it.joinToString(" "))
+      }
+      println("MasterSecret")
+      masterSecret.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
+        println(it.joinToString(" "))
+      }
+      // end debug
 
       TLS.Handshake.finished(cipherSuite, masterSecret, encryptionKeys, buffer, buffer1)
       channel.asyncWrite(buffer, true)
