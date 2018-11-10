@@ -204,7 +204,7 @@ object TLS {
           buffer.putShort(0x0000)
 
           serverName(host, buffer)
-          statusRequest(buffer)
+          //statusRequest(buffer)
           //supportedGroups(buffer)
           //ecPointFormats(buffer)
           renegotiationInfo(buffer)
@@ -317,12 +317,7 @@ object TLS {
         val preMasterSecret = cipherSuite.preMasterSecret()
         val encryptedPreMasterSecret = cipherSuite.encrypt(certificate, preMasterSecret)
 
-        // Version major + minor (TLS 1.2 is ok here).
-        buffer.put(0x03)
-        buffer.put(0x03)
-
-
-        buffer.put(encryptedPreMasterSecret.size.toByte())
+        buffer.putShort(encryptedPreMasterSecret.size.toShort())
         buffer.put(encryptedPreMasterSecret)
 
         // update handshake type + length

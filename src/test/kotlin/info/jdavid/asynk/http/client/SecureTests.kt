@@ -73,6 +73,7 @@ class SecureTests {
   """.trimIndent()
 
   fun server() {
+    System.setProperty("javax.net.debug", "all")
     val context = SSLContext.getInstance("TLS").apply {
       init(
         KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply {

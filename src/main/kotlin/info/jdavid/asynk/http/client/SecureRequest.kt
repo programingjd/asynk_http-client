@@ -88,7 +88,7 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
           buffer, buffer1
         )
       //}
-
+      channel.asyncWrite(buffer, true)
 
       TLS.Handshake.changeCipherSpec(buffer, buffer1)
       channel.asyncWrite(buffer, true)
