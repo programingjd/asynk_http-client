@@ -121,9 +121,9 @@ object TLS {
                  masterSecret: ByteArray,
                  encryptionKeys: Array<ByteArray>,
                  buffer: ByteBuffer, buffer1: ByteBuffer) {
-      ContentType.HANDSHAKE.record(buffer, null) {
+      ContentType.HANDSHAKE.encrypt(cipherSuite, encryptionKeys, buffer) {
         println(">>> TLS 1.2 Handshake Finished")
-        ClientFinished(cipherSuite, masterSecret, encryptionKeys, buffer1, it)
+        ClientFinished(cipherSuite, masterSecret, buffer1, it)
       }
     }
 
@@ -527,33 +527,46 @@ object TLS {
 
       operator fun invoke(cipherSuite: CipherSuite,
                           masterSecret: ByteArray,
-                          encryptionKeys: Array<ByteArray>,
                           buffer1: ByteBuffer,
                           buffer: ByteBuffer) {
         // HandshakeType + uint24 length will be updated at the end
-        val position = buffer.position()
-        buffer.putInt(0)
+//        val position = buffer.position()
+//        buffer.putInt(0)
 
         // Version major + minor (TLS 1.2 is ok here).
-        buffer.put(0x03)
-        buffer.put(0x03)
+//        buffer.put(0x03)
+//        buffer.put(0x03)
+
+        val handshakeHash = cipherSuite.hash(buffer1)
 
         val verifyData = cipherSuite.prf(
           cipherSuite.verifyDataLength(),
           masterSecret,
           "client finished",
-          cipherSuite.hash(buffer1)
+          handshakeHash
         )
+        buffer.put(verifyData)
 
-        val iv = SecureRandom.getSeed(cipherSuite.blockLength())
-        val encryptedData = cipherSuite.encrypt(iv, encryptionKeys, verifyData)
-        buffer.put(iv)
-        buffer.put(encryptedData)
+        // start debug
+        println("HandshakeHash")
+        handshakeHash.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
+          println(it.joinToString(" "))
+        }
+        println("VerifyData")
+        verifyData.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
+          println(it.joinToString(" "))
+        }
+        // end debug
+
+//        val iv = SecureRandom.getSeed(cipherSuite.blockLength())
+//        val encryptedData = cipherSuite.encrypt(iv, encryptionKeys, verifyData)
+//        buffer.put(iv)
+//        buffer.put(encryptedData)
 
         // update handshake type + length
-        val size = buffer.position() - position - 4
-        buffer.putInt(position, size)
-        buffer.put(position, HandshakeType.FINISHED.id)
+//        val size = buffer.position() - position - 4
+//        buffer.putInt(position, size)
+//        buffer.put(position, HandshakeType.FINISHED.id)
       }
 
     }
@@ -676,6 +689,26 @@ object TLS {
                                 clientRandom: ByteArray): Array<ByteArray> {
       val size = 72
       val keyBlock = prf(size, masterSecret, "key expansion", serverRandom + clientRandom)
+
+      // start debug
+      println("Client Mac Key")
+      keyBlock.copyOfRange(0, 20).map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
+        println(it.joinToString(" "))
+      }
+      println("Server Mac Key")
+      keyBlock.copyOfRange(20, 40).map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
+        println(it.joinToString(" "))
+      }
+      println("Client Write Key")
+      keyBlock.copyOfRange(40, 56).map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
+        println(it.joinToString(" "))
+      }
+      println("Server Write Key")
+      keyBlock.copyOfRange(56, 72).map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
+        println(it.joinToString(" "))
+      }
+      // end debug
+
       return arrayOf(
         keyBlock.copyOfRange(0, 20),
         keyBlock.copyOfRange(20, 40),
@@ -717,6 +750,7 @@ object TLS {
         init(SecretKeySpec(keys[0], "HMACSHA1"))
       }
       val mac = hmac.doFinal(payload)
+
       val paddingSize = when(val k = (payload.size + mac.size) % 16) {
         0 -> 16
         else -> 16 - k
@@ -724,8 +758,19 @@ object TLS {
       val paddingValue = (paddingSize - 1).toByte()
       val padding = ByteArray(paddingSize) { paddingValue }
 
+      // start debug
+      println("MAC")
+      mac.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
+        println(it.joinToString(" "))
+      }
+      println("Payload")
+      (payload + mac + padding).map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
+        println(it.joinToString(" "))
+      }
+      // end debug
+
       return Cipher.getInstance("AES/CBC/NoPadding").apply {
-        init(Cipher.ENCRYPT_MODE, SecretKeySpec(keys[3], "AES"), IvParameterSpec(iv))
+        init(Cipher.ENCRYPT_MODE, SecretKeySpec(keys[2], "AES"), IvParameterSpec(iv))
       }.doFinal(payload + mac + padding)
     }
 
@@ -753,6 +798,40 @@ object TLS {
     HANDSHAKE(0x16),
     APPLICATION_DATA(0x17);
 
+    fun <T> encrypt(cipherSuite: CipherSuite, encryptionKeys: Array<ByteArray>,
+                    buffer: ByteBuffer, f: (buffer: ByteBuffer) -> T): T {
+      val result = record(buffer, false, null, f)
+
+      val iv = SecureRandom.getSeed(cipherSuite.blockLength())
+      val data = ByteArray(buffer.remaining()).apply { buffer.get(this) }
+      val encryptedData = cipherSuite.encrypt(iv, encryptionKeys, data)
+
+      buffer.clear()
+      // TLS ContentType
+      buffer.put(id)
+
+      // TLS Version: Major + Minor
+      buffer.put(0x03)
+      buffer.put(0x03)
+
+      // Length (updated at the end)
+      val position = buffer.position()
+      buffer.putShort(0)
+
+      // IV
+      buffer.put(iv)
+      // Cipher
+      buffer.put(encryptedData)
+
+      // Update length
+      val length = (buffer.position() - position - 2).toShort()
+      buffer.putShort(position, length)
+
+      buffer.flip()
+
+      return result
+    }
+
     fun <T> record(buffer: ByteBuffer, buffer1: ByteBuffer?, f: (buffer: ByteBuffer) -> T): T {
       return record(buffer, false, buffer1, f)
     }
@@ -762,7 +841,8 @@ object TLS {
       buffer.clear()
       // TLS ContentType
       buffer.put(id)
-      // TLS Version: Major + Minor (0x0301 for TLS 1.0; not TLS 1.2 for compatibility)
+      // TLS Version: Major + Minor
+      // 0x0301 (TLS 1.0) on the first record for compatibility reason, 0x0303 (TLS 1.2) for the next records
       buffer.put(0x03)
       buffer.put(if (initial) 0x01.toByte() else 0x03.toByte())
 

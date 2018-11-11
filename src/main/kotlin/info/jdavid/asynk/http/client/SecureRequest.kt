@@ -4,9 +4,11 @@ import info.jdavid.asynk.core.asyncConnect
 import info.jdavid.asynk.core.asyncRead
 import info.jdavid.asynk.core.asyncWrite
 import info.jdavid.asynk.http.Crypto
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import org.slf4j.LoggerFactory
 import java.lang.RuntimeException
+import java.math.BigInteger
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousSocketChannel
@@ -108,6 +110,13 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
       masterSecret.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
         println(it.joinToString(" "))
       }
+      val p = buffer1.position()
+      println("Data (${p} bytes ${Crypto.hex(BigInteger.valueOf(p.toLong()))})")
+      buffer1.flip()
+      (0..(p-1)).map { Crypto.hex(byteArrayOf(buffer1.get(it))) }.chunked(16).forEach {
+        println(it.joinToString(" "))
+      }
+      buffer1.position(p).limit(buffer1.capacity())
       // end debug
 
       TLS.Handshake.finished(cipherSuite, masterSecret, encryptionKeys, buffer, buffer1)
