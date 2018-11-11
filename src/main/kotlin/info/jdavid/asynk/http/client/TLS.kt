@@ -758,6 +758,10 @@ object TLS {
       val paddingValue = (paddingSize - 1).toByte()
       val padding = ByteArray(paddingSize) { paddingValue }
 
+      val encrypted = Cipher.getInstance("AES/CBC/NoPadding").apply {
+        init(Cipher.ENCRYPT_MODE, SecretKeySpec(keys[2], "AES"), IvParameterSpec(iv))
+      }.doFinal(payload + mac + padding)
+
       // start debug
       println("MAC")
       mac.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
@@ -767,11 +771,17 @@ object TLS {
       (payload + mac + padding).map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
         println(it.joinToString(" "))
       }
+      println("IV")
+      iv.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
+        println(it.joinToString(" "))
+      }
+      println("Encrypted")
+      encrypted.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
+        println(it.joinToString(" "))
+      }
       // end debug
 
-      return Cipher.getInstance("AES/CBC/NoPadding").apply {
-        init(Cipher.ENCRYPT_MODE, SecretKeySpec(keys[2], "AES"), IvParameterSpec(iv))
-      }.doFinal(payload + mac + padding)
+      return encrypted
     }
 
   }
@@ -802,8 +812,8 @@ object TLS {
                     buffer: ByteBuffer, f: (buffer: ByteBuffer) -> T): T {
       val result = record(buffer, false, null, f)
 
-      val iv = SecureRandom.getSeed(cipherSuite.blockLength())
       val data = ByteArray(buffer.remaining()).apply { buffer.get(this) }
+      val iv = SecureRandom.getSeed(cipherSuite.blockLength())
       val encryptedData = cipherSuite.encrypt(iv, encryptionKeys, data)
 
       buffer.clear()
