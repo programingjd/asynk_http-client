@@ -9,7 +9,8 @@ import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousSocketChannel
 
-internal abstract class AbstractRequest<C: AsynchronousSocketChannel, H: Any>: Request.Requester {
+abstract class AbstractRequest<C: AsynchronousSocketChannel, H: Any>
+         internal constructor(): Request.Requester {
 
   override suspend fun <T: Body>request(method: Method, host: String, port: Int,
                                         pathWithQueryAndFragment: String,
@@ -39,7 +40,7 @@ internal abstract class AbstractRequest<C: AsynchronousSocketChannel, H: Any>: R
       //debug(buffer)
       buffer.flip()
       while (buffer.remaining() > 0) write(socket, handshake, timeoutMillis, buffer)
-      body?.writeTo(socket, buffer)
+      body?.writeTo(socket, buffer) // TODO: replace socket with request
 
       buffer.clear()
       if (read(socket, handshake, timeoutMillis, buffer) < 16) throw IncompleteResponseException()
@@ -58,7 +59,7 @@ internal abstract class AbstractRequest<C: AsynchronousSocketChannel, H: Any>: R
         override val maxRequestSize = 65536
       }
       val code = Http.body(
-        socket,
+        socket, // TODO: replace socket with request
         httpVersion,
         buffer,
         context,

@@ -3,6 +3,7 @@ package info.jdavid.asynk.http.client
 import info.jdavid.asynk.http.Crypto
 import java.io.ByteArrayInputStream
 import java.lang.RuntimeException
+import java.lang.UnsupportedOperationException
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -13,7 +14,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-object TLS {
+internal object TLS {
 
   interface Fragment
 
@@ -129,15 +130,16 @@ object TLS {
 
     operator fun invoke(buffer: ByteBuffer, buffer1: ByteBuffer?): Fragment {
       val position = buffer.position()
-      val fragment = when (val type = HandshakeType.valueOf(buffer.get(buffer.position())).apply { println(this) }) {
-        HandshakeType.HELLO_REQUEST -> TODO()
-        HandshakeType.SERVER_HELLO -> ServerHello(buffer)
-        HandshakeType.CERTIFICATE -> ServerCertificate(buffer)
-        HandshakeType.SERVER_KEY_EXCHANGE -> ServerKeyExchange(buffer)
-        HandshakeType.CERTIFICATE_REQUEST -> CertificateRequest(buffer)
-        HandshakeType.SERVER_HELLO_DONE -> ServerHelloDone(buffer)
-        else -> throw RuntimeException("Unexpected record type ${type}.")
-      }
+      val fragment =
+        when (val type = HandshakeType.valueOf(buffer.get(buffer.position())).apply { println(this) }) {
+          HandshakeType.HELLO_REQUEST -> TODO()
+          HandshakeType.SERVER_HELLO -> ServerHello(buffer)
+          HandshakeType.CERTIFICATE -> ServerCertificate(buffer)
+          HandshakeType.SERVER_KEY_EXCHANGE -> ServerKeyExchange(buffer)
+          HandshakeType.CERTIFICATE_REQUEST -> CertificateRequest(buffer)
+          HandshakeType.SERVER_HELLO_DONE -> ServerHelloDone(buffer)
+          else -> throw RuntimeException("Unexpected record type ${type}.")
+        }
       if (buffer1 != null) {
         val p = buffer.position()
         val l = buffer.limit()
@@ -538,7 +540,8 @@ object TLS {
 //        buffer.put(0x03)
 
         println("Handshake data length: ${buffer1.position()}")
-        val handshakeHash = cipherSuite.hash(buffer1.flip())
+        buffer1.flip()
+        val handshakeHash = cipherSuite.hash(buffer1)
 
         val verifyData = cipherSuite.prf(
           cipherSuite.verifyDataLength(),
@@ -572,13 +575,25 @@ object TLS {
 
     }
 
+    object ServerFinished {
+
+      operator fun invoke(): Fragment {
+        return Fragment()
+      }
+
+      class Fragment: TLS.Fragment {
+        override fun toString() = "Finished.Fragment()"
+      }
+
+    }
+
   }
 
   fun masterSecret(cipherSuite: CipherSuite, preMasterSecret: ByteArray,
                    clientRandom: ByteArray, serverRandom: ByteArray) =
     cipherSuite.prf(48, preMasterSecret, "master secret", clientRandom + serverRandom)
 
-  fun record(buffer: ByteBuffer, buffer1: ByteBuffer?): List<Fragment> {
+  fun record(handshake: SecureRequest.Handshake?, buffer: ByteBuffer, buffer1: ByteBuffer?): List<Fragment> {
     return when (version(buffer)) {
       ContentType.ALERT -> {
         @Suppress("UsePropertyAccessSyntax") val length = buffer.getShort()
@@ -593,7 +608,7 @@ object TLS {
       ContentType.CHANGE_CIPHER_SPEC -> {
         @Suppress("UsePropertyAccessSyntax") val length = buffer.getShort()
         val position = buffer.position()
-        val list = ArrayList<Fragment>(4)
+        val list = ArrayList<Fragment>(1)
         while (true) {
           list.add(Handshake.ServerChangeCipherSpec(buffer))
           if (buffer.position() == position + length) break
@@ -601,14 +616,23 @@ object TLS {
         list
       }
       ContentType.HANDSHAKE -> {
-        @Suppress("UsePropertyAccessSyntax") val length = buffer.getShort()
-        val position = buffer.position()
-        val list = ArrayList<Fragment>(4)
-        while (true) {
-          list.add(Handshake(buffer, buffer1))
-          if (buffer.position() == position + length) break
+        if (handshake == null) {
+          @Suppress("UsePropertyAccessSyntax") val length = buffer.getShort()
+          val position = buffer.position()
+          val list = ArrayList<Fragment>(4)
+          while (true) {
+            list.add(Handshake(buffer, buffer1))
+            if (buffer.position() == position + length) break
+          }
+          list
         }
-        list
+        else {
+          @Suppress("UsePropertyAccessSyntax") val length = buffer.getShort()
+          buffer.position(buffer.position() + length)
+          val list = ArrayList<Fragment>(1)
+          list.add(Handshake.ServerFinished())
+          list
+        }
       }
       else -> throw RuntimeException("Unexpected record type.")
     }
@@ -665,6 +689,20 @@ object TLS {
     fun prf(size: Int, secret: ByteArray, label: String, seed: ByteArray): ByteArray
     fun encrypt(certificate: ByteArray, payload: ByteArray): ByteArray
     fun encrypt(iv: ByteArray, keys: Array<ByteArray>, payload: ByteArray, macHeader: ByteArray): ByteArray
+  }
+
+  object NULL_CIPHER: CipherSuite {
+    override fun blockLength() = throw UnsupportedOperationException()
+    override fun verifyDataLength() = throw UnsupportedOperationException()
+    override fun preMasterSecret() = throw UnsupportedOperationException()
+    override fun encryptionKeys(masterSecret: ByteArray, serverRandom: ByteArray,
+                                clientRandom: ByteArray) = throw UnsupportedOperationException()
+    override fun hash(data: ByteBuffer) = throw UnsupportedOperationException()
+    override fun prf(size: Int, secret: ByteArray,
+                     label: String, seed: ByteArray) = throw UnsupportedOperationException()
+    override fun encrypt(certificate: ByteArray, payload: ByteArray) = throw UnsupportedOperationException()
+    override fun encrypt(iv: ByteArray, keys: Array<ByteArray>, payload: ByteArray,
+                         macHeader: ByteArray) = throw UnsupportedOperationException()
   }
 
   // This one is mandatory for tls 1.2

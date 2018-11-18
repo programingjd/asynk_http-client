@@ -4,7 +4,6 @@ import info.jdavid.asynk.core.asyncConnect
 import info.jdavid.asynk.core.asyncRead
 import info.jdavid.asynk.core.asyncWrite
 import info.jdavid.asynk.http.Crypto
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import org.slf4j.LoggerFactory
 import java.lang.RuntimeException
@@ -58,12 +57,12 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
       channel.asyncWrite(buffer, true)
 
       val fragments = LinkedList<TLS.Fragment>()
-      fragments.addAll(nextRecord(channel, buffer, buffer1))
+      fragments.addAll(nextRecord(null, channel, buffer, buffer1))
       val serverHello = fragments.first() as TLS.Handshake.ServerHello.Fragment
 
       if (fragments.find { it is TLS.Handshake.ServerHelloDone.Fragment } == null) {
         while (true) {
-          val record = nextRecord(channel, buffer, buffer1)
+          val record = nextRecord(null, channel, buffer, buffer1)
           fragments.addAll(record)
           if (
             record.fold(false) { done: Boolean, fragment: TLS.Fragment ->
@@ -122,26 +121,43 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
       TLS.Handshake.finished(cipherSuite, masterSecret, encryptionKeys, buffer, buffer1)
       channel.asyncWrite(buffer, true)
 
+      buffer1.clear()
+      val handshake = Handshake(
+        cipherSuite,
+        encryptionKeys,
+        buffer1
+      )
+
       if (fragments.find { it is TLS.Handshake.ServerChangeCipherSpec.Fragment } == null) {
-        fragments.addAll(nextRecord(channel, buffer, null))
+        fragments.addAll(nextRecord(handshake, channel, buffer, null))
         fragments.find {
           it is TLS.Handshake.ServerChangeCipherSpec.Fragment
         } as TLS.Handshake.ServerChangeCipherSpec.Fragment
       }
 
+
+      if (fragments.find { it is TLS.Handshake.ServerFinished.Fragment } == null) {
+        fragments.addAll(nextRecord(handshake, channel, buffer, null))
+        fragments.find {
+          it is TLS.Handshake.ServerFinished.Fragment
+        } as TLS.Handshake.ServerFinished.Fragment
+      }
+
       println("ok")
-      Handshake(cipherSuite, buffer1, ByteBuffer.allocateDirect(16384))
+      handshake
     }
   }
 
-  private suspend fun nextRecord(channel: AsynchronousSocketChannel, buffer: ByteBuffer,
+  private suspend fun nextRecord(handshake: Handshake?,
+                                 channel: AsynchronousSocketChannel,
+                                 buffer: ByteBuffer,
                                  buffer1: ByteBuffer? = null): List<TLS.Fragment> {
     buffer.compact()
     if (buffer.position() == 0) {
       channel.asyncRead(buffer)
     }
     buffer.flip()
-    return TLS.record(buffer, buffer1).let {
+    return TLS.record(handshake, buffer, buffer1).let {
       if (it.isEmpty()) throw RuntimeException()
       val result = it.filter {
         if (it is TLS.Alert.Fragment) {
@@ -151,17 +167,42 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
         }
         else true
       }
-      if (result.isEmpty()) nextRecord(channel, buffer, buffer1) else result
+      if (result.isEmpty()) nextRecord(handshake, channel, buffer, buffer1) else result
     }
   }
 
   override suspend fun read(channel: AsynchronousSocketChannel, handshake: Handshake,
-                            timeoutMillis: Long, buffer: ByteBuffer) = TODO()
+                            timeoutMillis: Long, buffer: ByteBuffer): Long {
+    val position = buffer.position()
+    handshake.read(channel, timeoutMillis, buffer)
+    return (buffer.position() - position).toLong()
+  }
 
   override suspend fun write(channel: AsynchronousSocketChannel, handshake: Handshake,
-                             timeoutMillis: Long, buffer: ByteBuffer) = TODO()
+                             timeoutMillis: Long, buffer: ByteBuffer): Long {
+    val position = buffer.position()
+    handshake.write(channel, timeoutMillis, buffer)
+    return (buffer.position() - position).toLong()
+  }
 
   class Handshake(private val cipherSuite: TLS.CipherSuite,
-                  private val buffer1: ByteBuffer, private val buffer2: ByteBuffer)
+                  private val encryptionKeys: Array<ByteArray>,
+                  private val buffer1: ByteBuffer) {
+    private var inputSequence: Long = 0L
+    private var outputSequence: Long = 0L
+
+    fun write(channel: AsynchronousSocketChannel, timeoutMillis: Long, buffer: ByteBuffer) {
+      TODO()
+      //cipherSuite.encrypt(encryptionKeys, buffer, buffer1)
+      //channel.asyncWrite(buffer1, true)
+    }
+
+    fun read(channel: AsynchronousSocketChannel, timeoutMillis: Long, buffer: ByteBuffer) {
+      TODO()
+      //if (buffer1.remaining() > 0) buffer.put(buffer1)
+      //else cipherSuite.decrypt(encryptionKeys, buffer, buffer1)
+    }
+
+  }
 
 }
