@@ -111,7 +111,7 @@ object TLS {
     }
 
     fun changeCipherSpec(buffer: ByteBuffer, buffer1: ByteBuffer) {
-      ContentType.CHANGE_CIPHER_SPEC.record(buffer, buffer1) {
+      ContentType.CHANGE_CIPHER_SPEC.record(buffer, null) {
         println(">>> TLS 1.2 ChangeCipherSpec")
         ClientChangeCipherSpec(it)
       }
@@ -121,7 +121,7 @@ object TLS {
                  masterSecret: ByteArray,
                  encryptionKeys: Array<ByteArray>,
                  buffer: ByteBuffer, buffer1: ByteBuffer) {
-      ContentType.HANDSHAKE.encrypt(cipherSuite, encryptionKeys, buffer) {
+      ContentType.HANDSHAKE.encrypt(cipherSuite, encryptionKeys, 0L, buffer) {
         println(">>> TLS 1.2 Handshake Finished")
         ClientFinished(cipherSuite, masterSecret, buffer1, it)
       }
@@ -530,14 +530,15 @@ object TLS {
                           buffer1: ByteBuffer,
                           buffer: ByteBuffer) {
         // HandshakeType + uint24 length will be updated at the end
-//        val position = buffer.position()
-//        buffer.putInt(0)
+        val position = buffer.position()
+        buffer.putInt(0)
 
-        // Version major + minor (TLS 1.2 is ok here).
+//        // Version major + minor (TLS 1.2 is ok here).
 //        buffer.put(0x03)
 //        buffer.put(0x03)
 
-        val handshakeHash = cipherSuite.hash(buffer1)
+        println("Handshake data length: ${buffer1.position()}")
+        val handshakeHash = cipherSuite.hash(buffer1.flip())
 
         val verifyData = cipherSuite.prf(
           cipherSuite.verifyDataLength(),
@@ -564,9 +565,9 @@ object TLS {
 //        buffer.put(encryptedData)
 
         // update handshake type + length
-//        val size = buffer.position() - position - 4
-//        buffer.putInt(position, size)
-//        buffer.put(position, HandshakeType.FINISHED.id)
+        val size = buffer.position() - position - 4
+        buffer.putInt(position, size)
+        buffer.put(position, HandshakeType.FINISHED.id)
       }
 
     }
@@ -663,7 +664,7 @@ object TLS {
     fun hash(data: ByteBuffer): ByteArray
     fun prf(size: Int, secret: ByteArray, label: String, seed: ByteArray): ByteArray
     fun encrypt(certificate: ByteArray, payload: ByteArray): ByteArray
-    fun encrypt(iv: ByteArray, keys: Array<ByteArray>, payload: ByteArray): ByteArray
+    fun encrypt(iv: ByteArray, keys: Array<ByteArray>, payload: ByteArray, macHeader: ByteArray): ByteArray
   }
 
   // This one is mandatory for tls 1.2
@@ -745,11 +746,16 @@ object TLS {
       return cipher.wrap(SecretKeySpec(payload, "RSA"))
     }
 
-    override fun encrypt(iv: ByteArray, keys: Array<ByteArray>, payload: ByteArray): ByteArray {
+    override fun encrypt(iv: ByteArray, keys: Array<ByteArray>,
+                         payload: ByteArray,
+                         macHeader: ByteArray): ByteArray {
       val hmac = Mac.getInstance("HMACSHA1").apply {
         init(SecretKeySpec(keys[0], "HMACSHA1"))
+        update(macHeader)
       }
       val mac = hmac.doFinal(payload)
+      println("Mac key: ${Crypto.hex(keys[0])}")
+      println("Mac of ${Crypto.hex(payload)} = ${Crypto.hex(mac)}")
 
       val paddingSize = when(val k = (payload.size + mac.size) % 16) {
         0 -> 16
@@ -808,13 +814,25 @@ object TLS {
     HANDSHAKE(0x16),
     APPLICATION_DATA(0x17);
 
-    fun <T> encrypt(cipherSuite: CipherSuite, encryptionKeys: Array<ByteArray>,
+    fun <T> encrypt(cipherSuite: CipherSuite, encryptionKeys: Array<ByteArray>, sequence: Long,
                     buffer: ByteBuffer, f: (buffer: ByteBuffer) -> T): T {
-      val result = record(buffer, false, null, f)
+      buffer.clear()
+      val result = f(buffer)
+      buffer.flip()
 
       val data = ByteArray(buffer.remaining()).apply { buffer.get(this) }
       val iv = SecureRandom.getSeed(cipherSuite.blockLength())
-      val encryptedData = cipherSuite.encrypt(iv, encryptionKeys, data)
+
+      val macHeader = ByteArray(13)
+      ByteBuffer.wrap(macHeader).apply {
+        putLong(sequence) // sequence number
+        put(id)      // type
+        put(0x03) // version major
+        put(0x03) // version minor
+        putShort(data.size.toShort())
+      }
+
+      val encryptedData = cipherSuite.encrypt(iv, encryptionKeys, data, macHeader)
 
       buffer.clear()
       // TLS ContentType
@@ -836,6 +854,14 @@ object TLS {
       // Update length
       val length = (buffer.position() - position - 2).toShort()
       buffer.putShort(position, length)
+
+      // start debug
+      val p = buffer.position()
+      println("write ${p} bytes (${Crypto.hex(byteArrayOf(p.toByte()))})")
+      (0..(p-1)).map { Crypto.hex(byteArrayOf(buffer.get(it))) }.chunked(16).forEach {
+        println(it.joinToString(" "))
+      }
+      // end debug
 
       buffer.flip()
 
