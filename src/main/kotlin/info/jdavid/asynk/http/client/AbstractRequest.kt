@@ -16,7 +16,6 @@ abstract class AbstractRequest<C: AsynchronousSocketChannel, H: Any>
   override suspend fun <T: Body>request(method: Method, host: String, port: Int,
                                         pathWithQueryAndFragment: String,
                                         headers: Headers, body: T?,
-                                        timeoutMillis: Long,
                                         buffer: ByteBuffer): Request.Response {
     if (body != null) {
       headers.set(Headers.CONTENT_TYPE, body.contentType())
@@ -30,7 +29,8 @@ abstract class AbstractRequest<C: AsynchronousSocketChannel, H: Any>
     headers.set(Headers.ACCEPT_ENCODING, "identity")
     return open().use { socket ->
       connect(socket, InetSocketAddress(host, port))
-      val handshake = handshake(host, socket, timeoutMillis, buffer)
+      val handshake = handshake(host, socket, buffer)
+      val socketAccess = socketAccess(handshake)
       buffer.put("${method} ${pathWithQueryAndFragment} HTTP/1.1".toByteArray(Charsets.ISO_8859_1))
       buffer.put(CRLF)
       for (line in headers.lines) {
@@ -40,21 +40,20 @@ abstract class AbstractRequest<C: AsynchronousSocketChannel, H: Any>
       buffer.put(CRLF)
       //debug(buffer)
       buffer.flip()
-      while (buffer.remaining() > 0) write(socket, handshake, timeoutMillis, buffer)
-      body?.writeTo(socket, buffer) // TODO: replace socket with request
+      while (buffer.remaining() > 0) socketAccess.asyncWrite(socket, buffer)
+      body?.writeTo(socket, socketAccess, buffer) // TODO: replace socket with request
 
       buffer.clear()
-      if (read(socket, handshake, timeoutMillis, buffer) < 16) throw IncompleteResponseException()
+      if (socketAccess.asyncRead(socket, buffer) < 16) throw IncompleteResponseException()
       buffer.flip()
       val httpVersion = Http.httpVersion(buffer)
       val status = Http.status(buffer)
       if (buffer.remaining() < 4) {
         buffer.compact()
-        if (read(socket, handshake, timeoutMillis, buffer) < 4) throw IncompleteResponseException()
+        if (socketAccess.asyncRead(socket, buffer) < 4) throw IncompleteResponseException()
         buffer.flip()
       }
       val responseHeaders = Headers()
-      val socketAccess = socketAccess(handshake)
       Http.headers(socket, socketAccess, buffer, responseHeaders)
       val context = object: Context {
         override var buffer: ByteBuffer? = null
@@ -89,12 +88,7 @@ abstract class AbstractRequest<C: AsynchronousSocketChannel, H: Any>
 
   protected abstract suspend fun connect(channel: C, address: InetSocketAddress)
 
-  protected abstract suspend fun handshake(host: String, channel: C,
-                                           timeoutMillis: Long, buffer: ByteBuffer): H
-
-  protected abstract suspend fun read(channel: C, handshake: H, timeoutMillis: Long, buffer: ByteBuffer): Long
-
-  protected abstract suspend fun write(channel: C, handshake: H, timeoutMillis: Long, buffer: ByteBuffer): Long
+  protected abstract suspend fun handshake(host: String, channel: C, buffer: ByteBuffer): H
 
 //  private fun debug(buffer: ByteBuffer) {
 //    buffer.flip()

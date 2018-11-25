@@ -5,7 +5,7 @@ package info.jdavid.asynk.http.client
 import info.jdavid.asynk.http.Headers
 import info.jdavid.asynk.http.MediaType
 import info.jdavid.asynk.http.Method
-import info.jdavid.asynk.http.internal.SocketAccess
+import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.lang.RuntimeException
 import java.nio.ByteBuffer
@@ -15,16 +15,14 @@ object Request {
   open class Response(val status: Int, val headers: Headers, val body: ByteBuffer)
 
   internal interface Requester {
-    suspend fun <T: Body>request(method: info.jdavid.asynk.http.Method, host: String, port: Int,
+    suspend fun <T: Body>request(method: Method, host: String, port: Int,
                                  pathWithQueryAndFragment: String,
                                  headers: Headers, body: T?,
-                                 timeoutMillis: Long,
                                  buffer: ByteBuffer): Request.Response
   }
 
   internal suspend fun <T: Body>request(method: Method, url: String, headers: Headers, body: T?,
                                         followRedirect: Boolean,
-                                        timeoutMillis: Long,
                                         buffer: ByteBuffer,
                                         insecureRequester: Requester = InsecureRequest,
                                         secureRequester: Requester = SecureRequest): Response {
@@ -32,7 +30,7 @@ object Request {
       var location: String = url
       while (true) {
         val response =
-          request(method, location, headers, body, timeoutMillis, buffer, insecureRequester, secureRequester)
+          request(method, location, headers, body, buffer, insecureRequester, secureRequester)
         location = when(response.status) {
           301, 302, 303, 307, 308 -> absolute(location, response.headers.value(Headers.LOCATION))
           else -> null
@@ -40,7 +38,7 @@ object Request {
       }
     }
     else {
-      return request(method, url, headers, body, timeoutMillis, buffer, insecureRequester, secureRequester)
+      return request(method, url, headers, body, buffer, insecureRequester, secureRequester)
     }
   }
 
@@ -76,7 +74,6 @@ object Request {
   }
 
   internal suspend fun <T: Body>request(method: info.jdavid.asynk.http.Method, url: String, headers: Headers, body: T?,
-                                        timeoutMillis: Long,
                                         buffer: ByteBuffer,
                                         insecureRequester: Requester = InsecureRequest,
                                         secureRequester: Requester = SecureRequest): Response {
@@ -111,7 +108,7 @@ object Request {
         url.substring(authorityEndIndex)
       }
       secureRequester.request(
-        method, host, port, pathWithQueryAndFragment, headers, body, timeoutMillis, buffer
+        method, host, port, pathWithQueryAndFragment, headers, body, buffer
       )
     }
     else {
@@ -142,7 +139,7 @@ object Request {
         url.substring(authorityEndIndex)
       }
       insecureRequester.request(
-        method, host, port, pathWithQueryAndFragment, headers, body, timeoutMillis, buffer
+        method, host, port, pathWithQueryAndFragment, headers, body, buffer
       )
     }
   }
@@ -163,9 +160,13 @@ class RequestDefinitionWithBody<T: Body> internal constructor(
   private val method: Method, private val url: String, private val headers: Headers, private val body: T?
 ): RequestDefinition<T> {
   override suspend fun send(timeoutMillis: Long, buffer: ByteBuffer) =
-    Request.request(method, url, headers, body, true, timeoutMillis, buffer)
+    withTimeout(timeoutMillis) {
+      Request.request(method, url, headers, body, true, buffer)
+    }
   override suspend fun send(followRedirect: Boolean, timeoutMillis: Long, buffer: ByteBuffer) =
-    Request.request(method, url, headers, body, followRedirect, timeoutMillis, buffer)
+    withTimeout(timeoutMillis) {
+      Request.request(method, url, headers, body, followRedirect, buffer)
+    }
 }
 
 
@@ -249,16 +250,24 @@ class UrlDefinitionBodyAllowed internal constructor(
     RequestDefinitionWithBody(method, url, headers, Body.from(text, mediaType))
   fun <T: Body>body(body: T) = RequestDefinitionWithBody(method, url, headers, body)
   override suspend fun send(timeoutMillis: Long, buffer: ByteBuffer) =
-    Request.request(method, url, headers, null, true, timeoutMillis, buffer)
+    withTimeout(timeoutMillis) {
+      Request.request(method, url, headers, null, true, buffer)
+    }
   override suspend fun send(followRedirect: Boolean, timeoutMillis: Long, buffer: ByteBuffer) =
-    Request.request(method, url, headers, null, followRedirect, timeoutMillis, buffer)
+    withTimeout(timeoutMillis) {
+      Request.request(method, url, headers, null, followRedirect, buffer)
+    }
 }
 class UrlDefinitionBodyForbidden internal constructor(
   method: Method, url: String
 ): UrlDefinition<UrlDefinitionBodyForbidden>(method, url), RequestDefinition<Nothing> {
   override fun that() = this
   override suspend fun send(timeoutMillis: Long, buffer: ByteBuffer) =
-    Request.request(method, url, headers, null, true, timeoutMillis, buffer)
+    withTimeout(timeoutMillis) {
+      Request.request(method, url, headers, null, true, buffer)
+    }
   override suspend fun send(followRedirect: Boolean, timeoutMillis: Long, buffer: ByteBuffer) =
-    Request.request(method, url, headers, null, followRedirect, timeoutMillis, buffer)
+    withTimeout(timeoutMillis) {
+      Request.request(method, url, headers, null, followRedirect, buffer)
+    }
 }

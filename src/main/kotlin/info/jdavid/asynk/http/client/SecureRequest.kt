@@ -41,7 +41,7 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
 
   override suspend fun handshake(host: String,
                                  channel: AsynchronousSocketChannel,
-                                 timeoutMillis: Long, buffer: ByteBuffer): Handshake {
+                                 buffer: ByteBuffer): Handshake {
     return withTimeout(30000L /*timeoutMillis*/) {
 //      val sessionId = UUID.randomUUID().let {
 //        buffer.putLong(it.mostSignificantBits)
@@ -173,20 +173,6 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
   }
 
   override suspend fun socketAccess(handshake: Handshake) = handshake
-
-  override suspend fun read(channel: AsynchronousSocketChannel, handshake: Handshake,
-                            timeoutMillis: Long, buffer: ByteBuffer): Long {
-    val position = buffer.position()
-    withTimeout(timeoutMillis) { handshake.asyncRead(channel, buffer) }
-    return (buffer.position() - position).toLong()
-  }
-
-  override suspend fun write(channel: AsynchronousSocketChannel, handshake: Handshake,
-                             timeoutMillis: Long, buffer: ByteBuffer): Long {
-    val position = buffer.position()
-    withTimeout(timeoutMillis) { handshake.asyncWrite(channel, buffer) }
-    return (buffer.position() - position).toLong()
-  }
 
   class Handshake(private val cipherSuite: TLS.CipherSuite,
                   private val encryptionKeys: Array<ByteArray>,

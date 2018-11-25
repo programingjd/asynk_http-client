@@ -7,7 +7,6 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.*
 import java.nio.ByteBuffer
-import java.nio.channels.AsynchronousSocketChannel
 
 class RequestLineTests {
 
@@ -22,19 +21,19 @@ class RequestLineTests {
   object TestSecureRequester: Request.Requester {
     override suspend fun <T: Body> request(method: Method, host: String, port: Int,
                                            pathWithQueryAndFragment: String, headers: Headers,
-                                           body: T?, timeoutMillis: Long, buffer: ByteBuffer) =
+                                           body: T?, buffer: ByteBuffer) =
       TestResponse(host, port, pathWithQueryAndFragment, true)
   }
 
   object TestInsecureRequester: Request.Requester {
     override suspend fun <T: Body> request(method: Method, host: String, port: Int,
                                            pathWithQueryAndFragment: String, headers: Headers,
-                                           body: T?, timeoutMillis: Long, buffer: ByteBuffer) =
+                                           body: T?, buffer: ByteBuffer) =
       TestResponse(host, port, pathWithQueryAndFragment, false)
   }
 
   suspend fun request(url: String) = Request.request(
-    Method.GET, url, Headers(), null, 30000L, emptyBuffer, TestInsecureRequester, TestSecureRequester
+    Method.GET, url, Headers(), null, emptyBuffer, TestInsecureRequester, TestSecureRequester
   ) as TestResponse
 
   @Test

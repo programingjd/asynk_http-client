@@ -1,4 +1,4 @@
-![jcenter](https://img.shields.io/badge/_jcenter_-0.0.0.23-6688ff.png?style=flat) &#x2003; ![jcenter](https://img.shields.io/badge/_Tests_-13/13-green.png?style=flat)
+![jcenter](https://img.shields.io/badge/_jcenter_-0.0.0.23-6688ff.png?style=flat) &#x2003; ![jcenter](https://img.shields.io/badge/_Tests_-14/14-green.png?style=flat)
 # Asynk HTTP Client
 An HTTP async client with suspend functions for kotlin coroutines.
 

@@ -22,7 +22,7 @@ internal object InsecureRequest: SocketAccess, AbstractRequest<AsynchronousSocke
 
   override suspend fun handshake(host: String,
                                  channel: AsynchronousSocketChannel,
-                                 timeoutMillis: Long, buffer: ByteBuffer) = Unit
+                                 buffer: ByteBuffer) = Unit
 
   override suspend fun socketAccess(handshake: Unit) = this
 
@@ -31,13 +31,5 @@ internal object InsecureRequest: SocketAccess, AbstractRequest<AsynchronousSocke
 
   override suspend fun asyncWrite(socket: AsynchronousSocketChannel, buffer: ByteBuffer) =
     socket.asyncWrite(buffer)
-
-  override suspend fun read(channel: AsynchronousSocketChannel, handshake: Unit,
-                            timeoutMillis: Long, buffer: ByteBuffer) =
-    withTimeout(timeoutMillis) { channel.asyncRead(buffer) }
-
-  override suspend fun write(channel: AsynchronousSocketChannel, handshake: Unit,
-                             timeoutMillis: Long, buffer: ByteBuffer) =
-    withTimeout(timeoutMillis) { channel.asyncWrite(buffer) }
 
 }
