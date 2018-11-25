@@ -4,6 +4,7 @@ import info.jdavid.asynk.core.asyncConnect
 import info.jdavid.asynk.core.asyncRead
 import info.jdavid.asynk.core.asyncWrite
 import info.jdavid.asynk.http.Crypto
+import info.jdavid.asynk.http.internal.SocketAccess
 import kotlinx.coroutines.withTimeout
 import org.slf4j.LoggerFactory
 import java.lang.RuntimeException
@@ -171,44 +172,34 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
     }
   }
 
-  override suspend fun asyncRead(socket: AsynchronousSocketChannel, buffer: ByteBuffer): Long {
-    TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
-  }
-
-  override suspend fun asyncWrite(socket: AsynchronousSocketChannel, buffer: ByteBuffer): Long {
-    TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
-  }
+  override suspend fun socketAccess(handshake: Handshake) = handshake
 
   override suspend fun read(channel: AsynchronousSocketChannel, handshake: Handshake,
                             timeoutMillis: Long, buffer: ByteBuffer): Long {
     val position = buffer.position()
-    handshake.read(channel, timeoutMillis, buffer)
+    withTimeout(timeoutMillis) { handshake.asyncRead(channel, buffer) }
     return (buffer.position() - position).toLong()
   }
 
   override suspend fun write(channel: AsynchronousSocketChannel, handshake: Handshake,
                              timeoutMillis: Long, buffer: ByteBuffer): Long {
     val position = buffer.position()
-    handshake.write(channel, timeoutMillis, buffer)
+    withTimeout(timeoutMillis) { handshake.asyncWrite(channel, buffer) }
     return (buffer.position() - position).toLong()
   }
 
   class Handshake(private val cipherSuite: TLS.CipherSuite,
                   private val encryptionKeys: Array<ByteArray>,
-                  private val buffer1: ByteBuffer) {
+                  private val buffer1: ByteBuffer): SocketAccess {
     private var inputSequence: Long = 0L
     private var outputSequence: Long = 0L
 
-    fun write(channel: AsynchronousSocketChannel, timeoutMillis: Long, buffer: ByteBuffer) {
-      TODO()
-      //cipherSuite.encrypt(encryptionKeys, buffer, buffer1)
-      //channel.asyncWrite(buffer1, true)
+    override suspend fun asyncRead(socket: AsynchronousSocketChannel, buffer: ByteBuffer): Long {
+      TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
     }
 
-    fun read(channel: AsynchronousSocketChannel, timeoutMillis: Long, buffer: ByteBuffer) {
-      TODO()
-      //if (buffer1.remaining() > 0) buffer.put(buffer1)
-      //else cipherSuite.decrypt(encryptionKeys, buffer, buffer1)
+    override suspend fun asyncWrite(socket: AsynchronousSocketChannel, buffer: ByteBuffer): Long {
+      TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
     }
 
   }

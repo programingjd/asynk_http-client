@@ -4,6 +4,7 @@ import info.jdavid.asynk.http.Headers
 import info.jdavid.asynk.http.Method
 import info.jdavid.asynk.http.internal.Context
 import info.jdavid.asynk.http.internal.Http
+import info.jdavid.asynk.http.internal.SocketAccess
 import java.lang.RuntimeException
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
@@ -53,14 +54,15 @@ abstract class AbstractRequest<C: AsynchronousSocketChannel, H: Any>
         buffer.flip()
       }
       val responseHeaders = Headers()
-      Http.headers(socket, this, buffer, responseHeaders)
+      val socketAccess = socketAccess(handshake)
+      Http.headers(socket, socketAccess, buffer, responseHeaders)
       val context = object: Context {
         override var buffer: ByteBuffer? = null
         override val maxRequestSize = 65536
       }
       val code = Http.body(
         socket,
-        this,
+        socketAccess,
         httpVersion,
         buffer,
         context,
@@ -78,6 +80,8 @@ abstract class AbstractRequest<C: AsynchronousSocketChannel, H: Any>
       )
     }
   }
+
+  protected abstract suspend fun socketAccess(handshake: H): SocketAccess
 
   protected abstract suspend fun open(): C
 

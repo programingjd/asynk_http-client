@@ -4,12 +4,13 @@ import info.jdavid.asynk.core.asyncConnect
 import info.jdavid.asynk.core.asyncRead
 import info.jdavid.asynk.core.asyncWrite
 import info.jdavid.asynk.core.closeSilently
+import info.jdavid.asynk.http.internal.SocketAccess
 import kotlinx.coroutines.withTimeout
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousSocketChannel
 
-internal object InsecureRequest: AbstractRequest<AsynchronousSocketChannel, Unit>() {
+internal object InsecureRequest: SocketAccess, AbstractRequest<AsynchronousSocketChannel, Unit>() {
 
   override suspend fun open() = AsynchronousSocketChannel.open()
 
@@ -22,6 +23,8 @@ internal object InsecureRequest: AbstractRequest<AsynchronousSocketChannel, Unit
   override suspend fun handshake(host: String,
                                  channel: AsynchronousSocketChannel,
                                  timeoutMillis: Long, buffer: ByteBuffer) = Unit
+
+  override suspend fun socketAccess(handshake: Unit) = this
 
   override suspend fun asyncRead(socket: AsynchronousSocketChannel, buffer: ByteBuffer) =
     socket.asyncRead(buffer)

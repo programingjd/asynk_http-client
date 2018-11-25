@@ -14,7 +14,7 @@ object Request {
 
   open class Response(val status: Int, val headers: Headers, val body: ByteBuffer)
 
-  internal interface Requester: SocketAccess {
+  internal interface Requester {
     suspend fun <T: Body>request(method: info.jdavid.asynk.http.Method, host: String, port: Int,
                                  pathWithQueryAndFragment: String,
                                  headers: Headers, body: T?,
