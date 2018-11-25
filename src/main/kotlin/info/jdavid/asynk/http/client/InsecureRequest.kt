@@ -23,6 +23,12 @@ internal object InsecureRequest: AbstractRequest<AsynchronousSocketChannel, Unit
                                  channel: AsynchronousSocketChannel,
                                  timeoutMillis: Long, buffer: ByteBuffer) = Unit
 
+  override suspend fun asyncRead(socket: AsynchronousSocketChannel, buffer: ByteBuffer) =
+    socket.asyncRead(buffer)
+
+  override suspend fun asyncWrite(socket: AsynchronousSocketChannel, buffer: ByteBuffer) =
+    socket.asyncWrite(buffer)
+
   override suspend fun read(channel: AsynchronousSocketChannel, handshake: Unit,
                             timeoutMillis: Long, buffer: ByteBuffer) =
     withTimeout(timeoutMillis) { channel.asyncRead(buffer) }

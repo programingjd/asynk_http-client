@@ -53,13 +53,14 @@ abstract class AbstractRequest<C: AsynchronousSocketChannel, H: Any>
         buffer.flip()
       }
       val responseHeaders = Headers()
-      Http.headers(socket, buffer, responseHeaders)
+      Http.headers(socket, this, buffer, responseHeaders)
       val context = object: Context {
         override var buffer: ByteBuffer? = null
         override val maxRequestSize = 65536
       }
       val code = Http.body(
-        socket, // TODO: replace socket with request
+        socket,
+        this,
         httpVersion,
         buffer,
         context,

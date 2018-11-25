@@ -171,6 +171,14 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
     }
   }
 
+  override suspend fun asyncRead(socket: AsynchronousSocketChannel, buffer: ByteBuffer): Long {
+    TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+  }
+
+  override suspend fun asyncWrite(socket: AsynchronousSocketChannel, buffer: ByteBuffer): Long {
+    TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+  }
+
   override suspend fun read(channel: AsynchronousSocketChannel, handshake: Handshake,
                             timeoutMillis: Long, buffer: ByteBuffer): Long {
     val position = buffer.position()

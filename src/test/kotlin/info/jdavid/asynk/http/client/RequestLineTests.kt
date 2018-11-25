@@ -7,6 +7,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.*
 import java.nio.ByteBuffer
+import java.nio.channels.AsynchronousSocketChannel
 
 class RequestLineTests {
 
@@ -23,6 +24,12 @@ class RequestLineTests {
                                            pathWithQueryAndFragment: String, headers: Headers,
                                            body: T?, timeoutMillis: Long, buffer: ByteBuffer) =
       TestResponse(host, port, pathWithQueryAndFragment, true)
+
+    override suspend fun asyncRead(socket: AsynchronousSocketChannel, buffer: ByteBuffer) =
+      throw UnsupportedOperationException()
+
+    override suspend fun asyncWrite(socket: AsynchronousSocketChannel, buffer: ByteBuffer) =
+      throw UnsupportedOperationException()
   }
 
   object TestInsecureRequester: Request.Requester {
@@ -30,6 +37,12 @@ class RequestLineTests {
                                            pathWithQueryAndFragment: String, headers: Headers,
                                            body: T?, timeoutMillis: Long, buffer: ByteBuffer) =
       TestResponse(host, port, pathWithQueryAndFragment, false)
+
+    override suspend fun asyncRead(socket: AsynchronousSocketChannel, buffer: ByteBuffer) =
+      throw UnsupportedOperationException()
+
+    override suspend fun asyncWrite(socket: AsynchronousSocketChannel, buffer: ByteBuffer) =
+      throw UnsupportedOperationException()
   }
 
   suspend fun request(url: String) = Request.request(

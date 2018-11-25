@@ -5,6 +5,7 @@ package info.jdavid.asynk.http.client
 import info.jdavid.asynk.http.Headers
 import info.jdavid.asynk.http.MediaType
 import info.jdavid.asynk.http.Method
+import info.jdavid.asynk.http.internal.SocketAccess
 import java.io.File
 import java.lang.RuntimeException
 import java.nio.ByteBuffer
@@ -13,7 +14,7 @@ object Request {
 
   open class Response(val status: Int, val headers: Headers, val body: ByteBuffer)
 
-  internal interface Requester {
+  internal interface Requester: SocketAccess {
     suspend fun <T: Body>request(method: info.jdavid.asynk.http.Method, host: String, port: Int,
                                  pathWithQueryAndFragment: String,
                                  headers: Headers, body: T?,

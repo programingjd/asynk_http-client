@@ -124,15 +124,16 @@ class SecureTests {
         //defaultSSLParameters.cipherSuites = arrayOf("TLS_RSA_WITH_AES_128_CBC_SHA")
       }
     )
-    (java.net.URL("https://localhost:8181").openConnection() as HttpsURLConnection).apply { hostnameVerifier = object: HostnameVerifier {
-      override fun verify(hostname: String?, session: SSLSession?) = true
-    } }.connect()
+    (java.net.URL("https://localhost:8181").openConnection() as HttpsURLConnection).apply {
+      hostnameVerifier = object: HostnameVerifier {
+        override fun verify(hostname: String?, session: SSLSession?) = true
+      }
+    }.connect()
   }
 
   @Test @Disabled
   fun test() {
     server()
-
 
     runBlocking {
 //      val response = Post.url("https://httpbin.org/post").body("abc").send()
