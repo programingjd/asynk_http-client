@@ -144,6 +144,8 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
         } as TLS.Handshake.ServerFinished.Fragment
       }
 
+      buffer.clear()
+
       println("ok")
       handshake
     }
