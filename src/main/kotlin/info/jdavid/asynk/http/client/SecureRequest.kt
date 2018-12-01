@@ -5,6 +5,7 @@ import info.jdavid.asynk.core.asyncRead
 import info.jdavid.asynk.core.asyncWrite
 import info.jdavid.asynk.http.Crypto
 import info.jdavid.asynk.http.internal.SocketAccess
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import org.slf4j.LoggerFactory
 import java.lang.RuntimeException
@@ -34,7 +35,9 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
   override suspend fun open() = AsynchronousSocketChannel.open()
 
   override suspend fun terminate(channel: AsynchronousSocketChannel, handshake: Handshake,
-                                 buffer: ByteBuffer) = TODO()
+                                 buffer: ByteBuffer) {
+    handshake.asyncClose(channel)
+  }
 
   override suspend fun connect(channel: AsynchronousSocketChannel, address: InetSocketAddress) =
     channel.asyncConnect(address)
@@ -151,6 +154,19 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
     }
   }
 
+  private suspend fun nextApplicationData(handshake: Handshake,
+                                          channel: AsynchronousSocketChannel,
+                                          buffer: ByteBuffer) {
+    buffer.compact()
+    if (buffer.position() == 0) {
+      channel.asyncRead(buffer)
+    }
+    buffer.flip()
+    if (!TLS.applicationData(handshake, buffer)) {
+      nextApplicationData(handshake, channel, buffer)
+    }
+  }
+
   private suspend fun nextRecord(handshake: Handshake?,
                                  channel: AsynchronousSocketChannel,
                                  buffer: ByteBuffer,
@@ -176,18 +192,42 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
 
   override suspend fun socketAccess(handshake: Handshake) = handshake
 
-  class Handshake(private val cipherSuite: TLS.CipherSuite,
-                  private val encryptionKeys: Array<ByteArray>,
-                  private val buffer1: ByteBuffer): SocketAccess {
-    private var inputSequence: Long = 0L
-    private var outputSequence: Long = 0L
+  class Handshake(internal val cipherSuite: TLS.CipherSuite,
+                  internal val encryptionKeys: Array<ByteArray>,
+                  internal val buffer1: ByteBuffer): SocketAccess {
+    internal var inputSequence: Long = 0L
+    internal var outputSequence: Long = 0L
 
     override suspend fun asyncRead(socket: AsynchronousSocketChannel, buffer: ByteBuffer): Long {
-      TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+      delay(1000)
+      val p = buffer.position()
+      if (!buffer1.hasRemaining()) {
+        buffer1.clear()
+        buffer1.limit(0)
+        nextApplicationData(this, socket, buffer1)
+      }
+      buffer.put(buffer1)
+      return (buffer.position() - p).toLong()
     }
 
     override suspend fun asyncWrite(socket: AsynchronousSocketChannel, buffer: ByteBuffer): Long {
-      TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+      val p = buffer.position()
+      TLS.ContentType.APPLICATION_DATA.encrypt(cipherSuite, encryptionKeys, ++outputSequence, buffer1) {
+        it.put(buffer)
+      }
+      socket.asyncWrite(buffer1, true)
+      buffer1.clear()
+      buffer1.limit(0)
+      return (buffer.position() - p).toLong()
+    }
+
+    suspend fun asyncClose(socket: AsynchronousSocketChannel) {
+      TLS.ContentType.ALERT.encrypt(cipherSuite, encryptionKeys, ++outputSequence, buffer1) {
+        TLS.Alert.closeNotify(it)
+      }
+      socket.asyncWrite(buffer1, true)
+      buffer1.clear()
+      buffer1.limit(0)
     }
 
   }

@@ -18,9 +18,23 @@ internal object TLS {
 
   interface Fragment
 
+  object ApplicationData {
+
+    operator fun invoke(handshake: SecureRequest.Handshake, buffer: ByteBuffer, length: Int): ByteArray {
+      val iv = ByteArray(16).apply { buffer.get(this) }
+      val payload = ByteArray(length - 16).apply { buffer.get(this) }
+      return handshake.cipherSuite.decrypt(iv, handshake.encryptionKeys, payload)
+    }
+
+  }
+
   object Alert {
 
-    operator fun invoke(buffer: ByteBuffer): Alert.Fragment {
+    fun closeNotify(buffer: ByteBuffer) {
+      buffer.put(Level.WARNING.id)
+    }
+
+    operator fun invoke(buffer: ByteBuffer): Fragment {
       // length should be 2
       @Suppress("UsePropertyAccessSyntax")
 
@@ -31,7 +45,7 @@ internal object TLS {
 
     data class Fragment(val level: Level, val description: Description): TLS.Fragment
 
-    enum class Level(private val id: Byte) {
+    enum class Level(internal val id: Byte) {
       WARNING(0x01.toByte()),
       FATAL(0x02.toByte()),
       UNSPECIFIED(0xff.toByte());
@@ -42,7 +56,7 @@ internal object TLS {
       }
     }
 
-    enum class Description(private val id: Byte) {
+    enum class Description(internal val id: Byte) {
       CLOSE_NOTIFY(0x00.toByte()),
       UNEXPECTED_MESSAGE(0x0a.toByte()),
       BAD_RECORD_MAC(0x14.toByte()),
@@ -332,7 +346,6 @@ internal object TLS {
 
     }
 
-
     object DHClientKeyExchange {
 
       operator fun invoke(cipherSuite: CipherSuite,
@@ -593,6 +606,36 @@ internal object TLS {
                    clientRandom: ByteArray, serverRandom: ByteArray) =
     cipherSuite.prf(48, preMasterSecret, "master secret", clientRandom + serverRandom)
 
+  fun applicationData(handshake: SecureRequest.Handshake, buffer: ByteBuffer): Boolean {
+    val version = version(buffer)
+    return when (version) {
+      ContentType.ALERT -> {
+        @Suppress("UsePropertyAccessSyntax") val length = buffer.getShort()
+        val position = buffer.position()
+        while (true) {
+          val alert = Alert(buffer)
+          when (alert.level) {
+            Alert.Level.FATAL -> throw RuntimeException(alert.description.name)
+            Alert.Level.WARNING -> println(alert.description.name)
+            else -> throw RuntimeException()
+          }
+          if (buffer.position() == position + length) break
+        }
+        false
+      }
+      ContentType.APPLICATION_DATA -> {
+        @Suppress("UsePropertyAccessSyntax") val length = buffer.getShort()
+        println("length: ${length}")
+        val bytes = ApplicationData(handshake, buffer, length.toInt())
+        buffer.clear()
+        buffer.put(bytes, 0, bytes.size - bytes[bytes.size - 1] - 1 - 20)
+        buffer.flip()
+        true
+      }
+      else -> throw RuntimeException()
+    }
+  }
+
   fun record(handshake: SecureRequest.Handshake?, buffer: ByteBuffer, buffer1: ByteBuffer?): List<Fragment> {
     return when (version(buffer)) {
       ContentType.ALERT -> {
@@ -689,6 +732,7 @@ internal object TLS {
     fun prf(size: Int, secret: ByteArray, label: String, seed: ByteArray): ByteArray
     fun encrypt(certificate: ByteArray, payload: ByteArray): ByteArray
     fun encrypt(iv: ByteArray, keys: Array<ByteArray>, payload: ByteArray, macHeader: ByteArray): ByteArray
+    fun decrypt(iv: ByteArray, keys: Array<ByteArray>, payload: ByteArray): ByteArray
   }
 
   object NULL_CIPHER: CipherSuite {
@@ -703,6 +747,8 @@ internal object TLS {
     override fun encrypt(certificate: ByteArray, payload: ByteArray) = throw UnsupportedOperationException()
     override fun encrypt(iv: ByteArray, keys: Array<ByteArray>, payload: ByteArray,
                          macHeader: ByteArray) = throw UnsupportedOperationException()
+    override fun decrypt(iv: ByteArray, keys: Array<ByteArray>,
+                         payload: ByteArray) = throw UnsupportedOperationException()
   }
 
   // This one is mandatory for tls 1.2
@@ -826,6 +872,31 @@ internal object TLS {
       // end debug
 
       return encrypted
+    }
+
+    override fun decrypt(iv: ByteArray, keys: Array<ByteArray>, payload: ByteArray): ByteArray {
+      val decrypted = Cipher.getInstance("AES/CBC/NoPadding").apply {
+        init(Cipher.DECRYPT_MODE, SecretKeySpec(keys[3], "AES"), IvParameterSpec(iv))
+      }.doFinal(payload)
+
+
+      println("Payload (${payload.size} bytes)")
+      payload.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
+        println(it.joinToString(" "))
+      }
+      println()
+      println("IV")
+      iv.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
+        println(it.joinToString(" "))
+      }
+      println()
+      println("DECRYPTED (${decrypted.size} bytes)")
+      decrypted.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
+        println(it.joinToString(" "))
+      }
+      println()
+
+      return decrypted
     }
 
   }

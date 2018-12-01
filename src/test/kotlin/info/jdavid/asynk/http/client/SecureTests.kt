@@ -131,7 +131,7 @@ class SecureTests {
     }.connect()
   }
 
-  @Test @Disabled
+  @Test
   fun test() {
     server()
 
