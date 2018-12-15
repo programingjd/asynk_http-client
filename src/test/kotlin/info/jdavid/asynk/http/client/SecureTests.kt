@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test
 import java.io.ByteArrayInputStream
 import java.net.InetSocketAddress
 import java.security.KeyStore
+import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import java.util.Base64
 import javax.net.ssl.HostnameVerifier
@@ -103,6 +104,11 @@ class SecureTests {
         }
       }
       createContext("/test") { exchange -> exchange.sendResponseHeaders(200, 0) }
+      createContext("/test2") { exchange ->
+        val bytes = "Test2".toByteArray()
+        exchange.sendResponseHeaders(200, bytes.size.toLong())
+        exchange.responseBody.write(bytes)
+      }
       executor = null
     }.start()
   }
@@ -132,13 +138,72 @@ class SecureTests {
   }
 
   @Test
+  fun testHeaders() {
+    runBlocking {
+      val response = Get.url("https://google.com").send(false)
+      Assertions.assertEquals(301, response.status)
+      Assertions.assertEquals("https://www.google.com/", response.headers.value(Headers.LOCATION))
+      Assertions.assertEquals("close", response.headers.value(Headers.CONNECTION))
+    }
+  }
+
+  @Test
+  fun testRedirect() {
+    runBlocking {
+      val response = Get.url("https://www.google.com/").send()
+      Assertions.assertEquals(200, response.status)
+      Assertions.assertEquals("close", response.headers.value(Headers.CONNECTION))
+    }
+  }
+
+  @Test
+  fun testContent() {
+    runBlocking {
+      val data = SecureRandom.getSeed(9000)
+      val response = Post.url("https://httpbin.org/anything").body(data, MediaType.OCTET_STREAM).send()
+      Assertions.assertEquals(200, response.status)
+      Assertions.assertEquals(MediaType.JSON, response.headers.value(Headers.CONTENT_TYPE))
+      Assertions.assertEquals("close", response.headers.value(Headers.CONNECTION))
+      val n = response.headers.value(Headers.CONTENT_LENGTH)?.toInt() ?: throw RuntimeException()
+      val bytes = ByteArray(n)
+      response.body.get(bytes)
+      Assertions.assertEquals(0, response.body.remaining())
+      @Suppress("UNCHECKED_CAST")
+      val map = ObjectMapper().readValue(bytes, Map::class.java) as Map<String, *>
+      Assertions.assertEquals(
+        "data:application/octet-stream;base64,${Base64.getEncoder().encodeToString(data)}", map["data"]
+      )
+    }
+  }
+
+  @Test
+  fun testLargeContent() {
+    runBlocking {
+      val data = SecureRandom.getSeed(22000)
+      val response = Post.url("https://httpbin.org/anything").body(data, MediaType.OCTET_STREAM).send()
+      Assertions.assertEquals(200, response.status)
+      Assertions.assertEquals(MediaType.JSON, response.headers.value(Headers.CONTENT_TYPE))
+      val n = response.headers.value(Headers.CONTENT_LENGTH)?.toInt() ?: throw RuntimeException()
+      val bytes = ByteArray(n)
+      response.body.get(bytes)
+      Assertions.assertEquals(0, response.body.remaining())
+      println(String(bytes))
+      @Suppress("UNCHECKED_CAST")
+      val map = ObjectMapper().readValue(bytes, Map::class.java) as Map<String, *>
+      Assertions.assertEquals(
+        "data:application/octet-stream;base64,${Base64.getEncoder().encodeToString(data)}", map["data"]
+      )
+    }
+  }
+
+  @Test
   fun test() {
     server()
 
     runBlocking {
 //      val response = Post.url("https://httpbin.org/post").body("abc").send()
-//      val response = Get.url("https://google.com").send()
-      val response = Get.url("https://localhost:8181").send()
+      val response = Get.url("https://google.com").send(false)
+//      val response = Get.url("https://localhost:8181/test2").send()
       Assertions.assertEquals(200, response.status)
       Assertions.assertEquals(MediaType.JSON, response.headers.value(Headers.CONTENT_TYPE))
       Assertions.assertEquals("close", response.headers.value(Headers.CONNECTION))

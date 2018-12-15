@@ -8,6 +8,7 @@ import info.jdavid.asynk.http.internal.SocketAccess
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import org.slf4j.LoggerFactory
+import java.lang.Exception
 import java.lang.RuntimeException
 import java.math.BigInteger
 import java.net.InetSocketAddress
@@ -199,7 +200,6 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
     internal var outputSequence: Long = 0L
 
     override suspend fun asyncRead(socket: AsynchronousSocketChannel, buffer: ByteBuffer): Long {
-      delay(1000)
       val p = buffer.position()
       if (!buffer1.hasRemaining()) {
         buffer1.clear()
@@ -213,7 +213,7 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
     override suspend fun asyncWrite(socket: AsynchronousSocketChannel, buffer: ByteBuffer): Long {
       val p = buffer.position()
       TLS.ContentType.APPLICATION_DATA.encrypt(cipherSuite, encryptionKeys, ++outputSequence, buffer1) {
-        it.put(buffer)
+        for (i in 0 until Math.min(16000, buffer.remaining())) it.put(buffer.get())
       }
       socket.asyncWrite(buffer1, true)
       buffer1.clear()
@@ -222,12 +222,17 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
     }
 
     suspend fun asyncClose(socket: AsynchronousSocketChannel) {
-      TLS.ContentType.ALERT.encrypt(cipherSuite, encryptionKeys, ++outputSequence, buffer1) {
-        TLS.Alert.closeNotify(it)
+      try {
+        TLS.ContentType.ALERT.encrypt(cipherSuite, encryptionKeys, ++outputSequence, buffer1) {
+          TLS.Alert.closeNotify(it)
+        }
+        socket.asyncWrite(buffer1, true)
+        buffer1.clear()
+        buffer1.limit(0)
       }
-      socket.asyncWrite(buffer1, true)
-      buffer1.clear()
-      buffer1.limit(0)
+      catch (e: Exception) {
+        e.printStackTrace()
+      }
     }
 
   }
