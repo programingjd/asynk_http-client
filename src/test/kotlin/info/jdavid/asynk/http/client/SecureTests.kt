@@ -139,7 +139,6 @@ class SecureTests {
           override fun handle(request: Request, params: Array<out String>): Response.Builder {
             return Response.Builder().
               statusLine(StatusLines.OK).
-              contentType(okhttp3.MediaType.parse(MediaType.TEXT)!!).
               body("Test")
           }
           override fun matches(method: String, url: HttpUrl) =
