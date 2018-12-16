@@ -34,6 +34,7 @@ dependencies {
   testImplementation("org.junit.jupiter:junit-jupiter-api:5.3.2")
   testRuntime("org.junit.jupiter:junit-jupiter-engine:5.3.2")
   testRuntime("org.slf4j:slf4j-jdk14:1.7.25")
+  testRuntime("info.jdavid.ok.server:okserver:3.12.0.0")
 }
 
 tasks.compileKotlin {

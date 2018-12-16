@@ -218,7 +218,7 @@ internal object TLS {
           //supportedGroups(buffer)
           //ecPointFormats(buffer)
           renegotiationInfo(buffer)
-//          recordSizeLimit(buffer)
+          recordSizeLimit(buffer)
 
           val size = (buffer.position() - position - 2).toShort()
           buffer.putShort(position, size)

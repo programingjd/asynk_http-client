@@ -6,7 +6,14 @@ import com.sun.net.httpserver.HttpsParameters
 import com.sun.net.httpserver.HttpsServer
 import info.jdavid.asynk.http.Headers
 import info.jdavid.asynk.http.MediaType
+import info.jdavid.ok.server.HttpServer
+import info.jdavid.ok.server.Https
+import info.jdavid.ok.server.RequestHandler
+import info.jdavid.ok.server.Response
+import info.jdavid.ok.server.StatusLines
 import kotlinx.coroutines.runBlocking
+import okhttp3.HttpUrl
+import okio.Buffer
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
@@ -120,6 +127,26 @@ class SecureTests {
     }.start()
   }
 
+  fun server2() {
+    System.setProperty("javax.net.debug", "all")
+    HttpServer().
+      requestHandler(object: RequestHandler {
+        override fun handle(clientIp: String, secure: Boolean, insecureOnly: Boolean, http2: Boolean,
+                            method: String, url: HttpUrl, requestHeaders: okhttp3.Headers,
+                            requestBody: Buffer?): Response {
+          return Response.Builder().
+            statusLine(StatusLines.OK).
+            contentLength(BYTES.size.toLong()).
+            contentType(okhttp3.MediaType.parse(MediaType.TEXT)).
+            body(BYTES).
+            build()
+        }
+      }).
+      ports(8080,8181).
+      https(Https.Builder().certificate(Base64.getMimeDecoder().decode(cert), false).build()).
+      start()
+  }
+
   val BYTES = Base64.getMimeEncoder().encode(SecureRandom.getSeed(48000))
 
   @Test @Disabled
@@ -187,7 +214,7 @@ class SecureTests {
   @Test
   fun testLargeContent() {
     runBlocking {
-      val data = SecureRandom.getSeed(22000)
+      val data = SecureRandom.getSeed(11728)  // 11727 works fine
       val response = Post.url("https://httpbin.org/anything").body(data, MediaType.OCTET_STREAM).send()
       Assertions.assertEquals(200, response.status)
       Assertions.assertEquals(MediaType.JSON, response.headers.value(Headers.CONTENT_TYPE))
@@ -204,12 +231,23 @@ class SecureTests {
   }
 
   @Test
-  fun test() {
-    server()
+  fun testL() {
+    server2()
+    runBlocking {
+      val response = Get.url("https://localhost:8181").send()
+      Assertions.assertEquals(200, response.status)
+      Assertions.assertEquals(MediaType.TEXT, response.headers.value(Headers.CONTENT_TYPE))
+      val n = response.headers.value(Headers.CONTENT_LENGTH)?.toInt() ?: throw RuntimeException()
+      Assertions.assertEquals(BYTES.size, n)
+    }
+  }
 
+  @Test
+  fun test() {
+    //server()
     runBlocking {
 //      val response = Post.url("https://httpbin.org/post").body("abc").send()
-      val response = Get.url("https://google.com").send(false)
+      val response = Get.url("https://www.google.com/").send(false)
 //      val response = Get.url("https://localhost:8181/test2").send()
       Assertions.assertEquals(200, response.status)
       Assertions.assertEquals(MediaType.JSON, response.headers.value(Headers.CONTENT_TYPE))
