@@ -150,10 +150,10 @@ object Request {
 
 interface RequestDefinition<T: Body> {
   suspend fun send(timeoutMillis: Long = 10000L,
-                   buffer: ByteBuffer = ByteBuffer.allocateDirect(16384)): Request.Response
+                   buffer: ByteBuffer = ByteBuffer.allocateDirect(18432)): Request.Response
   suspend fun send(followRedirect: Boolean,
                    timeoutMillis: Long = 10000L,
-                   buffer: ByteBuffer = ByteBuffer.allocateDirect(16384)): Request.Response
+                   buffer: ByteBuffer = ByteBuffer.allocateDirect(18432)): Request.Response
 }
 
 class RequestDefinitionWithBody<T: Body> internal constructor(

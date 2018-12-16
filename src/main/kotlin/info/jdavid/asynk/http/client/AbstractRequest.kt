@@ -90,14 +90,6 @@ abstract class AbstractRequest<C: AsynchronousSocketChannel, H: Any>
 
   protected abstract suspend fun handshake(host: String, channel: C, buffer: ByteBuffer): H
 
-//  private fun debug(buffer: ByteBuffer) {
-//    buffer.flip()
-//    val bytes = ByteArray(buffer.remaining())
-//    buffer.get(bytes)
-//    buffer.limit(buffer.capacity())
-//    println(String(bytes))
-//  }
-
   private val CRLF = "\r\n".toByteArray()
 
   class IncompleteResponseException: Exception()

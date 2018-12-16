@@ -3,14 +3,11 @@ package info.jdavid.asynk.http.client
 import info.jdavid.asynk.core.asyncConnect
 import info.jdavid.asynk.core.asyncRead
 import info.jdavid.asynk.core.asyncWrite
-import info.jdavid.asynk.http.Crypto
 import info.jdavid.asynk.http.internal.SocketAccess
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import org.slf4j.LoggerFactory
 import java.lang.Exception
 import java.lang.RuntimeException
-import java.math.BigInteger
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousSocketChannel
@@ -19,19 +16,6 @@ import java.util.LinkedList
 internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, SecureRequest.Handshake>() {
 
   private val logger = LoggerFactory.getLogger(SecureRequest::class.java)
-
-
-//  override suspend fun <T: Body>request(method: Method, host: String, port: Int,
-//                                        pathWithQueryAndFragment: String,
-//                                        headers: Headers, body: T?,
-//                                        timeoutMillis: Long,
-//                                        buffer: ByteBuffer): Request.Response {
-//    println(host)
-//    println(port)
-//    println(method)
-//    println(pathWithQueryAndFragment)
-//    return Request.Response(Status.OK, Headers(), buffer)
-//  }
 
   override suspend fun open() = AsynchronousSocketChannel.open()
 
@@ -56,7 +40,7 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
 //          buffer.clear()
 //        }
 //      }
-      val buffer1 = ByteBuffer.allocateDirect(16384)
+      val buffer1 = ByteBuffer.allocateDirect(18432)
 
       val clientHelloRandom = TLS.Handshake.clientHello(host, buffer, buffer1)
       channel.asyncWrite(buffer, true)
@@ -102,26 +86,7 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
 
       val masterSecret =
         TLS.masterSecret(cipherSuite, preMasterSecret, clientHelloRandom, serverHelloRandom)
-
       val encryptionKeys = cipherSuite.encryptionKeys(masterSecret, serverHelloRandom, clientHelloRandom)
-
-      // start debug
-      println("PreMasterSecret")
-      preMasterSecret.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
-        println(it.joinToString(" "))
-      }
-      println("MasterSecret")
-      masterSecret.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
-        println(it.joinToString(" "))
-      }
-      val p = buffer1.position()
-      println("Data (${p} bytes ${Crypto.hex(BigInteger.valueOf(p.toLong()))})")
-      buffer1.flip()
-      (0..(p-1)).map { Crypto.hex(byteArrayOf(buffer1.get(it))) }.chunked(16).forEach {
-        println(it.joinToString(" "))
-      }
-      buffer1.position(p).limit(buffer1.capacity())
-      // end debug
 
       TLS.Handshake.finished(cipherSuite, masterSecret, encryptionKeys, buffer, buffer1)
       channel.asyncWrite(buffer, true)
@@ -140,7 +105,6 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
         } as TLS.Handshake.ServerChangeCipherSpec.Fragment
       }
 
-
       if (fragments.find { it is TLS.Handshake.ServerFinished.Fragment } == null) {
         fragments.addAll(nextRecord(handshake, channel, buffer, null))
         fragments.find {
@@ -149,8 +113,6 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
       }
 
       buffer.clear()
-
-      println("ok")
       handshake
     }
   }

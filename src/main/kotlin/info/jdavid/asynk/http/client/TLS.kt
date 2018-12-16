@@ -97,7 +97,6 @@ internal object TLS {
 
     fun clientHello(host: String, buffer: ByteBuffer, buffer1: ByteBuffer): ByteArray {
       return ContentType.HANDSHAKE.record(buffer, true, buffer1) {
-        println(">>> TLS 1.2 Handshake ClientHello")
         ClientHello(host, null, it)
       }
     }
@@ -105,14 +104,12 @@ internal object TLS {
     fun clientHello(host: String, sessionId: ByteArray,
                     buffer: ByteBuffer, buffer1: ByteBuffer): ByteArray {
       return ContentType.HANDSHAKE.record(buffer, buffer1) {
-        println(">>> TLS 1.2 Handshake ClientHello")
         ClientHello(host, sessionId, it)
       }
     }
 
     fun certificate(buffer: ByteBuffer, buffer1: ByteBuffer) {
       ContentType.HANDSHAKE.record(buffer, buffer1) {
-        println(">>> TLS 1.2 Handshake Certificate")
         ClientCertificate(it)
       }
     }
@@ -120,14 +117,12 @@ internal object TLS {
     fun rsaKeyExchange(cipherSuite: CipherSuite, certificate: ByteArray,
                        buffer: ByteBuffer, buffer1: ByteBuffer): ByteArray {
       return ContentType.HANDSHAKE.record(buffer, buffer1) {
-        println(">>> TLS 1.2 Handshake ClientKeyExchange")
         RSAClientKeyExchange(cipherSuite, certificate, it)
       }
     }
 
     fun changeCipherSpec(buffer: ByteBuffer, buffer1: ByteBuffer) {
       ContentType.CHANGE_CIPHER_SPEC.record(buffer, null) {
-        println(">>> TLS 1.2 ChangeCipherSpec")
         ClientChangeCipherSpec(it)
       }
     }
@@ -137,7 +132,6 @@ internal object TLS {
                  encryptionKeys: Array<ByteArray>,
                  buffer: ByteBuffer, buffer1: ByteBuffer) {
       ContentType.HANDSHAKE.encrypt(cipherSuite, encryptionKeys, 0L, buffer) {
-        println(">>> TLS 1.2 Handshake Finished")
         ClientFinished(cipherSuite, masterSecret, buffer1, it)
       }
     }
@@ -145,7 +139,7 @@ internal object TLS {
     operator fun invoke(buffer: ByteBuffer, buffer1: ByteBuffer?): Fragment {
       val position = buffer.position()
       val fragment =
-        when (val type = HandshakeType.valueOf(buffer.get(buffer.position())).apply { println(this) }) {
+        when (val type = HandshakeType.valueOf(buffer.get(buffer.position()))) {
           HandshakeType.HELLO_REQUEST -> TODO()
           HandshakeType.SERVER_HELLO -> ServerHello(buffer)
           HandshakeType.CERTIFICATE -> ServerCertificate(buffer)
@@ -224,6 +218,7 @@ internal object TLS {
           //supportedGroups(buffer)
           //ecPointFormats(buffer)
           renegotiationInfo(buffer)
+//          recordSizeLimit(buffer)
 
           val size = (buffer.position() - position - 2).toShort()
           buffer.putShort(position, size)
@@ -289,13 +284,25 @@ internal object TLS {
         }
 
         private fun renegotiationInfo(buffer: ByteBuffer) {
-          // Extension type = SignatureAlgorithms 0xff01
+          // Extension type = RenegociationInfo 0xff01
           buffer.putShort(ExtensionType.RENEGOTIATION_INFO.id)
 
           // length
           buffer.putShort(1)
 
           buffer.put(0x00)
+        }
+
+        // RFC 8449
+        private fun recordSizeLimit(buffer: ByteBuffer) {
+          // Extension type = RecordSizeLimit 0x001c
+          buffer.putShort(ExtensionType.RECORD_SIZE_LIMIT.id)
+
+          // length
+          buffer.putShort(4)
+
+          // limit to 16kb
+          buffer.putInt(16384)
         }
 
         // RFC 7627
@@ -548,11 +555,6 @@ internal object TLS {
         val position = buffer.position()
         buffer.putInt(0)
 
-//        // Version major + minor (TLS 1.2 is ok here).
-//        buffer.put(0x03)
-//        buffer.put(0x03)
-
-        println("Handshake data length: ${buffer1.position()}")
         buffer1.flip()
         val handshakeHash = cipherSuite.hash(buffer1)
 
@@ -563,22 +565,6 @@ internal object TLS {
           handshakeHash
         )
         buffer.put(verifyData)
-
-        // start debug
-        println("HandshakeHash")
-        handshakeHash.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
-          println(it.joinToString(" "))
-        }
-        println("VerifyData")
-        verifyData.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
-          println(it.joinToString(" "))
-        }
-        // end debug
-
-//        val iv = SecureRandom.getSeed(cipherSuite.blockLength())
-//        val encryptedData = cipherSuite.encrypt(iv, encryptionKeys, verifyData)
-//        buffer.put(iv)
-//        buffer.put(encryptedData)
 
         // update handshake type + length
         val size = buffer.position() - position - 4
@@ -625,7 +611,7 @@ internal object TLS {
       }
       ContentType.APPLICATION_DATA -> {
         @Suppress("UsePropertyAccessSyntax") val length = buffer.getShort()
-        println("length: ${length}")
+        println(length)
         val bytes = ApplicationData(handshake, buffer, length.toInt())
         buffer.clear()
         buffer.put(bytes, 0, bytes.size - bytes[bytes.size - 1] - 1 - 20)
@@ -687,27 +673,6 @@ internal object TLS {
     if (major != 0x03.toByte()) throw RuntimeException("Unexpected tls major version ${major}.")
     val minor = buffer.get()
     if (minor < 0x00 || minor > 0x04) throw RuntimeException("Unexpected tls minor version ${minor}.")
-
-    // start debug
-    val p = buffer.position()
-    val n1 = buffer.get(p)
-    val n2 = buffer.get(p+1)
-    val n = (n1.toInt() and 0xff shl 8) or (n2.toInt() and 0xff)
-    println("<<< TLS 1.${minor-1} ${ContentType.valueOf(recordType).name.toLowerCase().capitalize()} " +
-            "[length ${Crypto.hex(byteArrayOf(n1, n2))}]")
-    println(
-      Crypto.hex(byteArrayOf(recordType)) + " " +
-      Crypto.hex(byteArrayOf(major)) + " " +
-      Crypto.hex(byteArrayOf(minor)) + " " +
-      Crypto.hex(byteArrayOf(n1)) + " " +
-      Crypto.hex(byteArrayOf(n2))
-    )
-    println("read ${n} bytes (${Crypto.hex(byteArrayOf(n1, n2))})")
-    ((p+2)..(p+1+n)).map { Crypto.hex(byteArrayOf(buffer.get(it))) }.chunked(16).forEach {
-      println(it.joinToString(" "))
-    }
-    // end debug
-
     return ContentType.valueOf(recordType)
   }
 
@@ -775,25 +740,6 @@ internal object TLS {
       val size = 72
       val keyBlock = prf(size, masterSecret, "key expansion", serverRandom + clientRandom)
 
-      // start debug
-      println("Client Mac Key")
-      keyBlock.copyOfRange(0, 20).map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
-        println(it.joinToString(" "))
-      }
-      println("Server Mac Key")
-      keyBlock.copyOfRange(20, 40).map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
-        println(it.joinToString(" "))
-      }
-      println("Client Write Key")
-      keyBlock.copyOfRange(40, 56).map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
-        println(it.joinToString(" "))
-      }
-      println("Server Write Key")
-      keyBlock.copyOfRange(56, 72).map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
-        println(it.joinToString(" "))
-      }
-      // end debug
-
       return arrayOf(
         keyBlock.copyOfRange(0, 20),
         keyBlock.copyOfRange(20, 40),
@@ -838,8 +784,6 @@ internal object TLS {
         update(macHeader)
       }
       val mac = hmac.doFinal(payload)
-      println("Mac key: ${Crypto.hex(keys[0])}")
-      println("Mac of ${Crypto.hex(payload)} = ${Crypto.hex(mac)}")
 
       val paddingSize = when(val k = (payload.size + mac.size) % 16) {
         0 -> 16
@@ -852,25 +796,6 @@ internal object TLS {
         init(Cipher.ENCRYPT_MODE, SecretKeySpec(keys[2], "AES"), IvParameterSpec(iv))
       }.doFinal(payload + mac + padding)
 
-      // start debug
-      println("MAC")
-      mac.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
-        println(it.joinToString(" "))
-      }
-      println("Payload")
-      (payload + mac + padding).map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
-        println(it.joinToString(" "))
-      }
-      println("IV")
-      iv.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
-        println(it.joinToString(" "))
-      }
-      println("Encrypted")
-      encrypted.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
-        println(it.joinToString(" "))
-      }
-      // end debug
-
       return encrypted
     }
 
@@ -878,23 +803,6 @@ internal object TLS {
       val decrypted = Cipher.getInstance("AES/CBC/NoPadding").apply {
         init(Cipher.DECRYPT_MODE, SecretKeySpec(keys[3], "AES"), IvParameterSpec(iv))
       }.doFinal(payload)
-
-
-      println("Payload (${payload.size} bytes)")
-      payload.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
-        println(it.joinToString(" "))
-      }
-      println()
-      println("IV")
-      iv.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
-        println(it.joinToString(" "))
-      }
-      println()
-      println("DECRYPTED (${decrypted.size} bytes)")
-      decrypted.map { Crypto.hex(byteArrayOf(it)) }.chunked(16).forEach {
-        println(it.joinToString(" "))
-      }
-      println()
 
       return decrypted
     }
@@ -963,15 +871,6 @@ internal object TLS {
       // Update length
       val length = (buffer.position() - position - 2).toShort()
       buffer.putShort(position, length)
-
-      // start debug
-      val p = buffer.position()
-      println("write ${p} bytes (${Crypto.hex(byteArrayOf(p.toByte()))})")
-      (0..(p-1)).map { Crypto.hex(byteArrayOf(buffer.get(it))) }.chunked(16).forEach {
-        println(it.joinToString(" "))
-      }
-      // end debug
-
       buffer.flip()
 
       return result
@@ -1008,15 +907,6 @@ internal object TLS {
         buffer1.put(buffer)
         buffer.position(p).limit(l)
       }
-
-      // start debug
-      val p = buffer.position()
-      println("write ${p} bytes (${Crypto.hex(byteArrayOf(p.toByte()))})")
-      (0..(p-1)).map { Crypto.hex(byteArrayOf(buffer.get(it))) }.chunked(16).forEach {
-        println(it.joinToString(" "))
-      }
-      // end debug
-
       buffer.flip()
 
       return result

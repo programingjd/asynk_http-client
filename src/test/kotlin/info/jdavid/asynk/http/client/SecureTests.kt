@@ -108,11 +108,19 @@ class SecureTests {
         val bytes = "Test2".toByteArray()
         exchange.sendResponseHeaders(200, bytes.size.toLong())
         exchange.responseBody.write(bytes)
+        exchange.responseBody.close()
+      }
+      createContext("/test3") { exchange ->
+        exchange.responseHeaders.set(Headers.CONTENT_TYPE, MediaType.TEXT)
+        exchange.sendResponseHeaders(200, BYTES.size.toLong())
+        exchange.responseBody.write(BYTES)
+        exchange.responseBody.close()
       }
       executor = null
     }.start()
   }
 
+  val BYTES = Base64.getMimeEncoder().encode(SecureRandom.getSeed(48000))
 
   @Test @Disabled
   fun testJDK() {
@@ -187,7 +195,6 @@ class SecureTests {
       val bytes = ByteArray(n)
       response.body.get(bytes)
       Assertions.assertEquals(0, response.body.remaining())
-      println(String(bytes))
       @Suppress("UNCHECKED_CAST")
       val map = ObjectMapper().readValue(bytes, Map::class.java) as Map<String, *>
       Assertions.assertEquals(
