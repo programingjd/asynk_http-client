@@ -9,8 +9,11 @@ import info.jdavid.asynk.http.MediaType
 import info.jdavid.ok.server.HttpServer
 import info.jdavid.ok.server.Https
 import info.jdavid.ok.server.RequestHandler
+import info.jdavid.ok.server.RequestHandlerChain
 import info.jdavid.ok.server.Response
 import info.jdavid.ok.server.StatusLines
+import info.jdavid.ok.server.handler.Handler
+import info.jdavid.ok.server.handler.Request
 import kotlinx.coroutines.runBlocking
 import okhttp3.HttpUrl
 import okio.Buffer
@@ -130,18 +133,33 @@ class SecureTests {
   fun server2() {
     System.setProperty("javax.net.debug", "all")
     HttpServer().
-      requestHandler(object: RequestHandler {
-        override fun handle(clientIp: String, secure: Boolean, insecureOnly: Boolean, http2: Boolean,
-                            method: String, url: HttpUrl, requestHeaders: okhttp3.Headers,
-                            requestBody: Buffer?): Response {
-          return Response.Builder().
-            statusLine(StatusLines.OK).
-            contentLength(BYTES.size.toLong()).
-            contentType(okhttp3.MediaType.parse(MediaType.TEXT)).
-            body(BYTES).
-            build()
-        }
-      }).
+      requestHandler(RequestHandlerChain().
+        add(object: Handler {
+          override fun setup() = this
+          override fun handle(request: Request, params: Array<out String>): Response.Builder {
+            return Response.Builder().
+              statusLine(StatusLines.OK).
+              contentType(okhttp3.MediaType.parse(MediaType.TEXT)!!).
+              body("Test")
+          }
+          override fun matches(method: String, url: HttpUrl) =
+            if ("get".equals(method.toLowerCase()) && url.encodedPath() == "/test") emptyArray<String>()
+            else null
+        }).
+        add(object: Handler {
+          override fun setup() = this
+          override fun handle(request: Request, params: Array<out String>): Response.Builder {
+            return Response.Builder().
+              statusLine(StatusLines.OK).
+              contentLength(BYTES.size.toLong()).
+              contentType(okhttp3.MediaType.parse(MediaType.TEXT)!!).
+              body(BYTES)
+          }
+          override fun matches(method: String, url: HttpUrl) =
+            if ("get".equals(method.toLowerCase()) && url.encodedPath() == "/test2") emptyArray<String>()
+            else null
+        })
+      ).
       ports(8080,8181).
       https(Https.Builder().certificate(Base64.getMimeDecoder().decode(cert), false).build()).
       start()
@@ -231,10 +249,23 @@ class SecureTests {
   }
 
   @Test
+  fun testS() {
+    server2()
+    runBlocking {
+      val response = Get.url("https://localhost:8181/test").send()
+      Assertions.assertEquals(200, response.status)
+      Assertions.assertEquals(MediaType.TEXT, response.headers.value(Headers.CONTENT_TYPE))
+      val n = response.headers.value(Headers.CONTENT_LENGTH)?.toInt() ?: throw RuntimeException()
+      Assertions.assertEquals(4, n)
+      Assertions.assertEquals("Test", String(ByteArray(n).apply { response.body.get(this) }))
+    }
+  }
+
+  @Test
   fun testL() {
     server2()
     runBlocking {
-      val response = Get.url("https://localhost:8181").send()
+      val response = Get.url("https://localhost:8181/test2").send()
       Assertions.assertEquals(200, response.status)
       Assertions.assertEquals(MediaType.TEXT, response.headers.value(Headers.CONTENT_TYPE))
       val n = response.headers.value(Headers.CONTENT_LENGTH)?.toInt() ?: throw RuntimeException()
