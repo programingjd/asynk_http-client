@@ -152,8 +152,7 @@ class SecureTests {
             return Response.Builder().
               statusLine(StatusLines.OK).
               contentLength(BYTES.size.toLong()).
-              contentType(okhttp3.MediaType.parse(MediaType.TEXT)!!).
-              body(BYTES)
+              body(okhttp3.MediaType.parse(MediaType.TEXT)!!, BYTES)
           }
           override fun matches(method: String, url: HttpUrl) =
             if ("get".equals(method.toLowerCase()) && url.encodedPath() == "/test2") emptyArray<String>()
