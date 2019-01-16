@@ -84,7 +84,7 @@ class SecureTests {
   """.trimIndent()
 
   fun server() {
-    System.setProperty("javax.net.debug", "all")
+    System.setProperty("javax.net.debug", "ssl")
     val context = SSLContext.getInstance("TLS").apply {
       init(
         KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply {
@@ -131,7 +131,7 @@ class SecureTests {
   }
 
   fun server2() {
-    System.setProperty("javax.net.debug", "all")
+    System.setProperty("javax.net.debug", "ssl:data")
     HttpServer().
       requestHandler(RequestHandlerChain().
         add(object: Handler {
@@ -279,7 +279,7 @@ class SecureTests {
       val response = Get.url("https://www.google.com/").send(false)
 //      val response = Get.url("https://localhost:8181/test2").send()
       Assertions.assertEquals(200, response.status)
-      Assertions.assertEquals(MediaType.JSON, response.headers.value(Headers.CONTENT_TYPE))
+      Assertions.assertEquals(MediaType.HTML, response.headers.value(Headers.CONTENT_TYPE)?.replace(Regex(";.*$"), ""))
       Assertions.assertEquals("close", response.headers.value(Headers.CONNECTION))
       Assertions.assertTrue(response.headers.has(Headers.SERVER))
       Assertions.assertTrue(response.headers.has(Headers.DATE))

@@ -117,19 +117,6 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
     }
   }
 
-  private suspend fun nextApplicationData(handshake: Handshake,
-                                          channel: AsynchronousSocketChannel,
-                                          buffer: ByteBuffer) {
-    buffer.compact()
-    if (buffer.position() == 0) {
-      channel.asyncRead(buffer)
-    }
-    buffer.flip()
-    if (!TLS.applicationData(handshake, buffer)) {
-      nextApplicationData(handshake, channel, buffer)
-    }
-  }
-
   private suspend fun nextRecord(handshake: Handshake?,
                                  channel: AsynchronousSocketChannel,
                                  buffer: ByteBuffer,
@@ -165,10 +152,11 @@ internal object SecureRequest: AbstractRequest<AsynchronousSocketChannel, Secure
       val p = buffer.position()
       if (!buffer1.hasRemaining()) {
         buffer1.clear()
-        buffer1.limit(0)
-        nextApplicationData(this, socket, buffer1)
+        TLS.applicationData(this, socket, buffer1, buffer, true)
       }
-      buffer.put(buffer1)
+      else {
+        TLS.applicationData(this, socket, buffer1, buffer, buffer.remaining() < 5)
+      }
       return (buffer.position() - p).toLong()
     }
 

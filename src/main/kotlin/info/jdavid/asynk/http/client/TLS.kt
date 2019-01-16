@@ -1,10 +1,12 @@
 package info.jdavid.asynk.http.client
 
+import info.jdavid.asynk.core.asyncRead
 import info.jdavid.asynk.http.Crypto
 import java.io.ByteArrayInputStream
 import java.lang.RuntimeException
 import java.lang.UnsupportedOperationException
 import java.nio.ByteBuffer
+import java.nio.channels.AsynchronousSocketChannel
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.security.cert.CertificateFactory
@@ -592,33 +594,63 @@ internal object TLS {
                    clientRandom: ByteArray, serverRandom: ByteArray) =
     cipherSuite.prf(48, preMasterSecret, "master secret", clientRandom + serverRandom)
 
-  fun applicationData(handshake: SecureRequest.Handshake, buffer: ByteBuffer): Boolean {
+  private fun applicationData(handshake: SecureRequest.Handshake, buffer: ByteBuffer,
+                              destination: ByteBuffer): Int {
     val version = version(buffer)
     return when (version) {
       ContentType.ALERT -> {
         @Suppress("UsePropertyAccessSyntax") val length = buffer.getShort()
-        val position = buffer.position()
-        while (true) {
-          val alert = Alert(buffer)
-          when (alert.level) {
-            Alert.Level.FATAL -> throw RuntimeException(alert.description.name)
-            Alert.Level.WARNING -> println(alert.description.name)
-            else -> throw RuntimeException()
+        if (buffer.remaining() < length) -2
+        else {
+          val position = buffer.position()
+          while (true) {
+            val alert = Alert(buffer)
+            when (alert.level) {
+              Alert.Level.FATAL -> throw RuntimeException(alert.description.name)
+              Alert.Level.WARNING -> println(alert.description.name)
+              else -> throw RuntimeException()
+            }
+            if (buffer.position() == position + length) break
           }
-          if (buffer.position() == position + length) break
+          -1
         }
-        false
       }
       ContentType.APPLICATION_DATA -> {
         @Suppress("UsePropertyAccessSyntax") val length = buffer.getShort()
-        println(length)
-        val bytes = ApplicationData(handshake, buffer, length.toInt())
-        buffer.clear()
-        buffer.put(bytes, 0, bytes.size - bytes[bytes.size - 1] - 1 - 20)
-        buffer.flip()
-        true
+        if (buffer.remaining() < length) -2
+        else {
+          val bytes = ApplicationData(handshake, buffer, length.toInt())
+          val n = bytes.size - bytes[bytes.size - 1] - 1 - 20
+          destination.put(bytes, 0, n)
+          n
+        }
       }
       else -> throw RuntimeException()
+    }
+  }
+
+  suspend fun applicationData(handshake: SecureRequest.Handshake,
+                              channel: AsynchronousSocketChannel,
+                              buffer: ByteBuffer, destination: ByteBuffer,
+                              readMore: Boolean) {
+    if (readMore) {
+      val position = buffer.position()
+      while (buffer.position() < 5) {
+        channel.asyncRead(buffer)
+      }
+      buffer.limit(buffer.position())
+      buffer.position(position)
+    }
+    val r = applicationData(handshake, buffer, destination)
+    if (buffer.hasRemaining()) {
+      buffer.compact()
+    }
+    else {
+      buffer.clear()
+    }
+    when (r) {
+      -2 -> applicationData(handshake, channel, buffer, destination, true)
+      -1 -> applicationData(handshake, channel, buffer, destination, buffer.remaining() < 5)
     }
   }
 
