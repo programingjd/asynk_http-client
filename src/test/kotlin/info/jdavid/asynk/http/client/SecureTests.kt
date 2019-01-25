@@ -34,6 +34,7 @@ import javax.net.ssl.SSLSession
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
+@Disabled
 class SecureTests {
 
   private val cert = """

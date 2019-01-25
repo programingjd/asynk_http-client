@@ -32,9 +32,9 @@ dependencies {
   implementation("org.slf4j:slf4j-api:1.7.25")
   testImplementation("com.fasterxml.jackson.core:jackson-databind:2.9.8")
   testImplementation("org.junit.jupiter:junit-jupiter-api:5.3.2")
+  testImplementation("info.jdavid.ok.server:okserver:3.12.0.0")
   testRuntime("org.junit.jupiter:junit-jupiter-engine:5.3.2")
   testRuntime("org.slf4j:slf4j-jdk14:1.7.25")
-  testRuntime("info.jdavid.ok.server:okserver:3.12.0.0")
 }
 
 tasks.compileKotlin {
