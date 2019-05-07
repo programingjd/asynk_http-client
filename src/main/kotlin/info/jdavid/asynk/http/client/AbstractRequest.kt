@@ -5,7 +5,6 @@ import info.jdavid.asynk.http.Method
 import info.jdavid.asynk.http.internal.Context
 import info.jdavid.asynk.http.internal.Http
 import info.jdavid.asynk.http.internal.SocketAccess
-import java.lang.RuntimeException
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousSocketChannel
@@ -59,17 +58,23 @@ abstract class AbstractRequest<C: AsynchronousSocketChannel, H: Any>
         override var buffer: ByteBuffer? = null
         override val maxRequestSize = 65536
       }
-      val code = Http.body(
-        socket,
-        socketAccess,
-        httpVersion,
-        buffer,
-        context,
-        true,
-        false,
-        responseHeaders,
-        null
-      )
+      val code = if(method == Method.HEAD) {
+        buffer.compact().flip()
+        if (buffer.remaining() == 0) 0 else 500
+      }
+      else {
+        Http.body(
+          socket,
+          socketAccess,
+          httpVersion,
+          buffer,
+          context,
+          true,
+          false,
+          responseHeaders,
+          null
+        )
+      }
       if (code > 1) throw RuntimeException()
       terminate(socket, handshake, buffer)
       Request.Response(

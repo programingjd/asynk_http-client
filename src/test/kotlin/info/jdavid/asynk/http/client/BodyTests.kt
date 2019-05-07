@@ -13,6 +13,14 @@ import java.util.Base64
 class BodyTests {
 
   @Test
+  fun testHeadWithContentType() {
+    runBlocking {
+      val response = Head.url("http://httpbin.org").send()
+      assertEquals(200, response.status)
+    }
+  }
+
+  @Test
   fun testRequestStringBody() {
     runBlocking {
       val response = Post.url("http://httpbin.org/post").body("abc").send()
